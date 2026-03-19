@@ -1,0 +1,354 @@
+---
+title: "RTP"
+format: html
+editor: visual
+---
+
+## libraries
+
+```{r}
+library(readr)
+library(readxl)
+library(dplyr)
+library(rmarkdown)
+library(tidyverse)
+library(sf)
+library(stringr)
+library(mapview)
+library(lubridate)
+library(scales)
+library(rfishbase)
+library(leaflet)
+```
+
+
+# importation des données RTP
+```{r}
+
+pro_data <- read_csv("data/pro/pro_data.csv")
+
+
+#données SIH 
+RTP <- read_delim(file="data/raw/ISIH-501892-taille_poids-20220131174507/ISIH-501892-taille_poids-20220131174507.txt", delim=";")
+
+#données fishbase 
+RTP_fishbase<- length_weight(
+  species_list =espece_peche$NomScientifique
+)
+
+
+```
+
+
+# RTP SIH
+
+```{r}
+# dans les données on ne garde en premier que les RTP de mediterranée : code 37 et 3712
+RTP_Med <- RTP %>% 
+	filter(NOM_VALIDE %in% pro_data$NomScientifique) %>%
+	filter(SECT_COD %in% c("37", "3712")) %>%
+	filter(TMESURE_COD=="LENGTH_TOTAL")
+
+# ensuite on va dans le reste des données pour aller chercher les données des espèces qui n'étaient pas dans MED
+RTP_autres <- RTP %>% 
+	filter(NOM_VALIDE %in% pro_data$NomScientifique) %>%
+	filter(! NOM_VALIDE %in% RTP_Med$NOM_VALIDE) %>%
+	filter(TMESURE_COD=="LENGTH_TOTAL")
+
+
+RTP_SIH <- bind_rows(RTP_Med, RTP_autres)
+
+
+# il y a plusieurs ratio par espèces : tri pour garder les ratios les plus adaptés 
+
+# 1er tri : quand plusieurs lignes =, n'en garder qu'une : 
+RTP_SIH <- RTP_SIH %>% 
+  distinct(NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B, .keep_all = T)
+
+# 2eme tri : quand lignes différentes, gqrder le ratio le plus récent : 
+RTP_SIH <- RTP_SIH %>%
+  group_by(NOM_VALIDE) %>%
+  slice_max( ANNEE, n=1) %>%
+  ungroup()
+
+# 3ème tri : ??
+
+
+
+# Regarder quelles espèces de notre jeu de données n'est pas dans les RTP_SIH : 
+
+absente_RTP_SIH <- pro_data %>%
+  filter(!NomScientifique %in% RTP$NOM_VALIDE)%>%
+  distinct(NomScientifique) %>%
+  pull(NomScientifique)
+  
+
+```
+
+# RTP fishbase 
+
+```{r}
+# dans la base de donnée, on ne garde que les données de mediterranée : donc tri par les pays cotiers et le nom des mers. 
+
+RTP_fishbase <- RTP_fishbase %>%
+  filter(Type == "TL") %>%
+  filter(str_detect(Locality, regex("mediterranean|spain|italy|greece|france|adriatic", ignore_case = TRUE)))
+
+# il y a plusieurs ratio par espèces : tri pour garder les ratios les plus adaptés 
+
+# 1er tri : quand plusieurs lignes =, n'en garder qu'une : 
+
+RTP_fishbase <- RTP_fishbase %>% 
+  distinct(Species, a, b, CoeffDetermination, .keep_all = T)
+
+#2ème tri : garder le r2 le plus fort 
+RTP_fishbase <- RTP_fishbase %>%
+  group_by(Species) %>%
+  slice_max(CoeffDetermination, n=1) %>%
+  ungroup()
+  
+
+# on regarde les espèces qui ne sont pas dans la base de données fishbase : 
+absente_RTP_fishbase<- pro_data %>%
+  filter(!NomScientifique %in% RTP_fishbase$Species) %>%
+  distinct(NomScientifique) %>%
+  pull(NomScientifique)
+
+
+```
+
+# espèces sans RTP du tout 
+
+
+```{r}
+
+espece_manquante <- pro_data%>%
+  filter(!NomScientifique %in% absente_RTP_fishbase & !NomScientifique %in% absente_RTP_SIH) %>%
+  distinct(NomScientifique)%>%
+  pull(NomScientifique)
+
+
+# les 10 espèces les plus pêchées sont-elles dans les données ? 
+
+espece_top10_RTP <- espece_top10 %>%
+  filter(!NomScientifique %in% RTP_fishbase$Species | !NomScientifique %in% RTP_Med$NOM_VALIDE)%>%
+  distinct(NomScientifique)%>%
+  pull(NomScientifique)
+
+
+```
+
+
+# tri tailles aberrantes
+
+```{r}
+# importation de l'excel avec les tailles max des espèces : fait à la main, donc à remettre à jour si de nouvelles espèces sont pêchées
+
+sp_taille_poids <- read_excel("data/raw/sp_taille_poids.xlsx")
+
+
+#ajouter les tailles et poids max à pro_data 
+pro_data <- pro_data %>%
+  left_join(sp_taille_poids %>%
+              select(NomScientifique, `Taille_max_(mm)`, `Poids_max_(g)`) %>%
+              distinct(),
+            by="NomScientifique")
+
+# mettre en numeric les valeurs 
+pro_data <- pro_data %>%
+  mutate(`Taille_max_(mm)`= as.numeric(`Taille_max_(mm)`), 
+         `Poids_max_(g)`= as.numeric(`Poids_max_(g)`))
+
+
+
+#il faut d'abord enlever les lignes ou les prises sont multiples: on ne sait pas si la taille est moyenne ou max ou min, pareil pour le poids
+
+
+data_prise_unique <- pro_data %>%
+  filter(`Nb_de_prises` == 1)
+
+
+#on enlève les tailles et les poids abérrants : donc ceux qui sont 10% au dessus de la taille et du poids max reportés : on les met dans un autre tableau pour les traiter plus tard. 
+
+erreur_taille_poids <- data_prise_unique %>%
+  filter(`Taille_(mm)`> `Taille_max_(mm)`*1.1 | is.na(`Taille_max_(mm)`)|
+         `Poids_(g)`> `Poids_max_(g)`*1.1 | is.na(`Poids_max_(g)`))
+
+#les données qui sont dans les tailles cohérentes sont dans un tableau data_cohérent
+data_coherente <- data_prise_unique %>%
+  filter(`Taille_(mm)`<= `Taille_max_(mm)`*1.1 & !is.na(`Taille_max_(mm)`)&
+         `Poids_(g)`<= `Poids_max_(g)`*1.1 & !is.na(`Poids_max_(g)`))
+
+```
+
+
+# analyses taille-poids
+
+```{r}
+# on utilise le data_coherente
+
+
+# plot taille/poids
+
+ggplot(data=data_coherente %>% uncount(Nb_de_prises)) +
+	geom_point(mapping=aes(x= `Taille_(mm)`, y=`Poids_(g)`)) +
+	xlab("Taille (mm)") + ylab("Poids (g)") +
+	theme_bw()
+```
+# RTP pour chaque sp avec données SIH 
+```{r}
+# avec les données SIH : 
+
+
+data_coherente_SIH <- data_coherente %>%
+  mutate(outlier_valeur= `Taille_(mm)`==0 | `Poids_(g)`==0) %>%
+  
+  left_join(RTP_SIH %>% select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B)) %>% # ajouter les coeff  dans le tableau 
+  
+  mutate(Poids_RTP=RTP_COEF_A_CM*`Taille_(mm)`^RTP_COEF_B) %>% # calculer le poids théorique grâce aux données de taille et aux coeff 
+  
+  mutate(Poids_diff = abs(`Poids_(g)`- Poids_RTP)) %>% # diff entre poids reel et poids théo
+  
+  mutate(outlier_RTP=Poids_diff/Poids_RTP > 1) %>% # met dans outlier_rtp les lignes ou poids obs vs poids théo >100%
+  
+	mutate(outlier=outlier_valeur | outlier_RTP) %>% # rassemble les outlier de zéro et les outlier de poids 
+
+  mutate(diag=ifelse(outlier_valeur, "Val. manquante", "val. ok")) %>%
+	mutate(diag=ifelse(! outlier_valeur, paste0(diag, " / ", 
+																							ifelse(is.na(outlier_RTP), "RTP inconnue", 
+																										 ifelse(outlier_RTP, "RTP aberrante", 'RTP ok'))), diag))  
+  
+data_coherente_SIH_clean <- data_coherente_SIH %>%
+  filter(!outlier_valeur) %>% # on enlève les outlier = true  : donc on enlève les lignes avec poids ou taille manquante
+  group_by(NomVernaculaire, NomScientifique, CodeFAO) %>%
+  summarise(
+    Taille_min_obs= min(`Taille_(mm)`),
+    Taille_max_obs = max(`Taille_(mm)`)) %>%
+  reframe(Taille=seq(from=Taille_min_obs, to=Taille_max_obs, by=10)) %>% 
+  ungroup() %>%
+	inner_join(RTP_SIH %>% select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B)) %>%
+	mutate(Poids=RTP_COEF_A_CM*Taille^RTP_COEF_B)
+
+
+
+data_coherente_SIH %>%
+  pull(NomVernaculaire) %>%
+  unique() %>%
+  lapply(function(sp) {
+    ggplot() +
+      geom_line(data = data_coherente_SIH_clean %>% filter(NomVernaculaire == sp),
+                aes(x=Taille, y=Poids), color="purple", size =1) +
+      geom_point(data = data_coherente_SIH %>% filter(NomVernaculaire == sp),
+                 aes(x=`Taille_(mm)`, y=`Poids_(g)`, color=diag)) +
+      xlab("Taille (mm)") + ylab("Poids (g)") +
+	    scale_color_manual(name=NULL, values=c("val. ok / RTP ok"="green", "val. ok / RTP inconnue"="darkgreen", "val. ok / RTP aberrante"="orange", "Val. manquante"="red")) +
+	    theme_bw() +
+	    theme(legend.position="bottom")+
+      ggtitle(sp)
+  })
+
+```
+
+# RTP pour chaque sp avec données fishbase
+```{r}
+
+# attention il faut passer en cm car la bse de donnée est en cm. 
+
+data_coherente_FB<- data_coherente%>%
+  mutate(`Taille_(mm)` = `Taille_(mm)`/10, 
+         `Taille_max_(mm)`=`Taille_max_(mm)`/10)
+
+data_coherente_FB <- data_coherente_FB %>%
+  rename(`Taille_(cm)`= `Taille_(mm)`,
+         `Taille_max_(cm)`=`Taille_max_(mm)`
+         )
+
+
+
+data_coherente_FB <- data_coherente_FB %>%
+  mutate(outlier_valeur= `Taille_(cm)`==0 | `Poids_(g)`==0) %>%
+  
+  left_join(RTP_fishbase %>% select(NomScientifique=Species, a, b)) %>% # ajouter les coeff  dans le tableau 
+  
+  mutate(Poids_RTP=a*`Taille_(cm)`^b) %>% # calculer le poids théorique grâce aux données de taille et aux coeff 
+  
+  mutate(Poids_diff = abs(`Poids_(g)`- Poids_RTP)) %>% # diff entre poids reel et poids théo
+  
+  mutate(outlier_RTP=Poids_diff/Poids_RTP > 1) %>% # met dans outlier_rtp les lignes ou poids obs vs poids théo >100%
+  
+	mutate(outlier=outlier_valeur | outlier_RTP) %>% # rassemble les outlier de zéro et les outlier de poids 
+
+  mutate(diag=ifelse(outlier_valeur, "Val. manquante", "val. ok")) %>%
+	mutate(diag=ifelse(! outlier_valeur, paste0(diag, " / ", 
+																							ifelse(is.na(outlier_RTP), "RTP inconnue", 
+																										 ifelse(outlier_RTP, "RTP aberrante", 'RTP ok'))), diag))  
+  
+
+data_coherente_FB_clean <- data_coherente_FB %>%
+  filter(!outlier_valeur) %>% # on enlève les outlier = true  : donc on enlève les lignes avec poids ou taille manquante
+  group_by(NomVernaculaire, NomScientifique, CodeFAO) %>%
+  summarise(
+    Taille_min_obs= min(`Taille_(cm)`),
+    Taille_max_obs = max(`Taille_(cm)`)) %>%
+  reframe(Taille=seq(from=Taille_min_obs, to=Taille_max_obs, by=10)) %>% 
+  ungroup() %>%
+	inner_join(RTP_fishbase %>% select(NomScientifique=Species, a, b)) %>%
+	mutate(Poids=a*Taille^b)
+
+
+
+data_coherente_FB %>%
+  pull(NomVernaculaire) %>%
+  unique() %>%
+  lapply(function(sp) {
+    ggplot() +
+      geom_line(data = data_coherente_FB_clean %>% filter(NomVernaculaire == sp),
+                aes(x=Taille, y=Poids), color="brown", size = 1) +
+      geom_point(data = data_coherente_FB %>% filter(NomVernaculaire == sp),
+                 aes(x=`Taille_(cm)`, y=`Poids_(g)`, color=diag)) +
+      xlab("Taille (mm)") + ylab("Poids (g)") +
+	    scale_color_manual(name=NULL, values=c("val. ok / RTP ok"="green", "val. ok / RTP inconnue"="darkgreen", "val. ok / RTP aberrante"="orange", "Val. manquante"="red")) +
+	    theme_bw() +
+	    theme(legend.position="bottom")+
+      ggtitle(sp)
+  })
+```
+
+
+
+# combiner les 2 RTP 
+```{r}
+
+#2 courbes sur chaque graphique : 
+# violet = SIH
+# marron = fishbase
+
+# pour que ça marche il faut que ça soit la même unité : FB est en cm, SIH est en mm .
+
+SIH_cm <- data_coherente_SIH_clean%>%
+  mutate(Taille=Taille/10, 
+         RTP_COEF_A_CM = RTP_COEF_A_CM/10)
+
+data_coherente_FB %>%
+  pull(NomVernaculaire) %>%
+  unique() %>%
+  lapply(function(sp) {
+    ggplot() +
+      geom_line(data = data_coherente_FB_clean %>% filter(NomVernaculaire == sp),
+                aes(x=Taille, y=Poids), color="brown", size = 1) +
+      geom_line(data = data_coherente_SIH_clean %>% filter(NomVernaculaire == sp),
+                aes(x=Taille, y=Poids), color="purple", size =1) +
+      geom_point(data = data_coherente_FB %>% filter(NomVernaculaire == sp),
+                 aes(x=`Taille_(cm)`, y=`Poids_(g)`, color=diag)) +
+      xlab("Taille (mm)") + ylab("Poids (g)") +
+	    scale_color_manual(name=NULL, values=c("val. ok / RTP ok"="green", "val. ok / RTP inconnue"="darkgreen", "val. ok / RTP aberrante"="orange", "Val. manquante"="red")) +
+	    theme_bw() +
+	    theme(legend.position="bottom")+
+      ggtitle(sp)
+  })
+
+
+```
+
+
+
