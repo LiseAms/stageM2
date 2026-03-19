@@ -1,0 +1,217 @@
+---
+title: "clean_data"
+format: html
+editor: visual
+---
+
+## libraries
+
+```{r}
+library(readr)
+library(readxl)
+library(dplyr)
+library(rmarkdown)
+library(tidyverse)
+library(sf)
+library(stringr)
+library(mapview)
+library(lubridate)
+library(scales)
+library(rfishbase)
+```
+
+## Importation des données
+
+```{r}
+
+data_raw <- read_delim("data/raw/RapportDesCaptures_19-03-2026_1773912418.csv", 
+                       delim = ";", escape_double = FALSE, trim_ws = TRUE, 
+                       skip = 2)
+```
+
+## description des colonnes
+
+Id_Prise : identifiant unique de la capture. Information automatique. Invariant.
+
+Id abonné : identifiant uniaue de l'utilisateur, se recoupe avec Id pêcheur du tableau EnaueteInformationSurlePecheur. Permettra de rattacher les informations dans 1 seul et même tableau.
+
+Horodate : date et heure de la saisie des informations, processus automatique.
+
+Latitude/Longitude : deux colonnes donnant les coordonnées au moment de la saisie
+
+Nb de prises : nombre d'individus avec les mêmes caractéristiques (même espèce) en sortie. Cela veut dire que les informations de taille/poids sont communes pour les x individus, il serait plus pratique pour les analmyses d'avoir les informations précises par individu et non pas des moyennes.
+
+Nb de pêcheurs : nombre de pêcheurs dans la même sortie : une session de pêche avec plusieurs pêcheurs.
+
+Taille (mm) : taille de l'individu dans le cas ou prise =1 ou taille moyenne ou maximale ou minimale quand prise \> 1 ; la longueur se mesure entre le bout du museau et l’extrémité de la nageoire caudale.
+
+Poids (g) : poids de l'individu dans le cas ou prise =1 ou poids moyen ou maximal ou minimum ou additioné quand prise \> 1
+
+Technique : technique utilisée pour la capture de l'individu : choix parmi
+
+-   broumé : au mouillage sur fond entre 30 et 70m, faire remonter les poissons dans le courant vers les lignes grâce à un appât à base de sardine, souvent pour la bonite.
+
+-   calée verticale (à l'ancre) : zones souvent profondes, leurre à l'aplomb depuis le bateau pour pêcher les poissons du fond
+
+-   dérive : appât au bout d'une ligne, l'embarcation qui dérive
+
+-   pêche du bord (rockfishing): canne depuis le bord, appât léger/leurre pour imiter une proie - surfcasting : pêche à la ligne dans la vague
+
+-   traine : appât au bout d'une ligne, embarcation va à une vitesse constante
+
+-   chasse sous-marine, agachon : affût sous marin
+
+-   chasse sous-marine, coulée : se laisser glisser vers le fond sans coups de palmes
+
+-   chasse sous-marine, indienne : exploration sous l'eau
+
+-   chasse sous-marine, trou : aller chercher le poisson dans les trous, grottes, failles; rochers
+
+Engin : materiel qui a permis de capturer le poisson
+
+Id sortie : numéro de la sortie, beaucoup de 0. Si durant une sortie il y a eu plusieurs prises de différentes espèces, numéro associé.
+
+Heure debut session : heure renseignée par le pêcheur comme étant le début de la session de pêche
+
+Durée de la session : durée de la session de pêche, l'utilisateur le renseigne, tranche de 30min, de 30min à 24h.
+
+Nb canne : toujours = à 0.
+
+Nb Hameçon : nombre d'hameçon, entre 0 et 40. automatique ? pas la possibilité de le renseigner sur l'application. = au nombre de prise ?, a verifier
+
+Nokill : indique si le no kill a été pratiqué. données binaires, 1 probablement = no kill pratiqué.
+
+Lien photo : photo associée à la prise, facultatif
+
+ID enquête : rempli uniquement par des NA
+
+NomVernaculaire : nom vernaculaire de l'espèce pêchée
+
+NomScientifique : nom latin, remplissage automatique
+
+Family : famille, remplissage automatique
+
+Order : ordre, remplissage automatique
+
+AutresNomsEtNomsLocaux : noms associés à l'espèce
+
+NomFAO : nom de l'espèce d'après la FAO : permet de n'avoir aucun doute sur la prise
+
+ISSCAAP :
+
+TAXOCODE :
+
+CodeFAO : code de l'espèce d'après la FAO : permet de n'avoir aucun doute sur la prise
+
+CD_REF :
+
+CD_NOM :
+
+CodeWorms :
+
+CodeEstamp :
+
+ParentEstamp :
+
+Nourriceries :
+
+Fait par gestionnaire : prise renseignée ou non par un gestionnaire (dans le cas des captures renseignées par formulaire, sur le site ou pendant un contrôle)
+
+Email gestionnaire déclarant : mail du gestionnaire qui a declaré la prise
+
+Catégorie usager : soit pêcheur soit gestionnaire/scientifique
+
+Nom pêcheur : souvent NA, sauf dans le cas des lignes gestionnaires/scientifique
+
+Zone concernée : organisme du gestionnaire/scientifique, NA pour les lignes pêcheurs
+
+Nom Fédération : permet de savoir si le pêcheur est dans une fédération, et laquelle. NA si pas de fédération
+
+ID ZoneDePeche : numéro de la zone de pêche
+
+-   -1 : NA ? correspond à quoi ?
+
+-   1 : Parc naturel marin du golfe du Lion
+
+-   4 : Parc national des Calanques
+
+-   5 : Réserve Naturelle des Bouches de Bonifacio
+
+-   6 : Parc naturel marin du Cap Corse et de l'Agriate / Parcu Naturale Marinu di u Capicorsu è di l'Agriate
+
+-   7 : Réserve Naturelle Marine de Cerbère-Banyuls
+
+-   8 : Méditerranée (hors zone réglementée par CatchMachine)
+
+ID SousZoneDePeche : numéro correspondant à la zone de pêche dans l'AMP
+
+Nom ZoneDePeche : nom de l'AMP Parc naturel marin du golfe du Lion Parc national des Calanques Réserve Naturelle des Bouches de Bonifacio Parc naturel marin du Cap Corse et de l'Agriate / Parcu Naturale Marinu di u Capicorsu è di l'Agriate Réserve Naturelle Marine de Cerbère-Banyuls Méditerranée (hors zone réglementée par CatchMachine)
+
+Nom SousZoneDePeche : nom de la sous-zone de l'AMP
+
+# formatage
+
+```{r}
+
+pro_data<- data_raw %>% 
+  filter(`Heure debut session`>= as.POSIXct("2024-02-01 00:00:00") )
+```
+
+### ajout de colonnes dates et formatage colonnes
+
+```{r}
+
+colnames(pro_data) <- gsub(" ","_", colnames(pro_data))
+
+#rajouter colonnes année; mois et jour pour plus de simplicité par la suite
+pro_data <- pro_data %>%
+  filter(!is.na(Horodate)) %>%
+  mutate(
+    jour_semaine = wday(Horodate, label = TRUE,abbr = FALSE, week_start = 1),  # Lun-Dim
+    mois = month(Horodate, label = T, abbr = F),
+    annee = year(Horodate)
+  )
+
+
+```
+
+# Tri des données
+
+
+### Nombre de pêcheurs : enlever les valeurs \<0 et \>?
+
+```{r}
+
+pro_data <- pro_data %>%
+  filter(Nb_de_pêcheurs >=0 & Nb_de_pêcheurs <= 10) # valeur max a changer 
+
+
+```
+
+### Nombre prise : enlever les valeurs \<0 et \> ?
+
+```{r}
+
+pro_data <- pro_data%>%
+  filter(Nb_de_prises>= 0 & Nb_de_prises<= 10) # valeur max a changer 
+
+
+```
+
+### Lieu de pêche = -1
+
+```{r}
+
+pro_data <- pro_data%>%
+  filter(ID_ZoneDePeche != -1)
+
+```
+
+# Création du csv pro_data
+
+```{r}
+write.csv(pro_data,"data/pro/pro_data.csv" )
+```
+
+
+ 
