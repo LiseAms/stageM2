@@ -154,7 +154,8 @@ Nom SousZoneDePeche : nom de la sous-zone de l'AMP
 ```{r}
 
 pro_data<- data_raw %>% 
-  filter(`Heure debut session`>= as.POSIXct("2024-02-01 00:00:00") )
+  rename(Taille_MM=`Taille (mm)`, Poids_g=`Poids (g)`) %>%
+  filter( `Heure debut session`>= as.POSIXct("2024-02-01 00:00:00") )
 ```
 
 ### ajout de colonnes dates et formatage colonnes
@@ -213,5 +214,3 @@ pro_data <- pro_data%>%
 write.csv(pro_data,"data/pro/pro_data.csv" )
 ```
 
-
- 

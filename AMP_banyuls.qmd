@@ -1,0 +1,44 @@
+---
+title: "AMP_banyuls"
+format: html
+editor: visual
+---
+
+
+
+## libraries
+
+```{r}
+library(readr)
+library(readxl)
+library(dplyr)
+library(rmarkdown)
+library(tidyverse)
+library(sf)
+library(stringr)
+library(mapview)
+library(lubridate)
+library(scales)
+library(rfishbase)
+library(leaflet)
+```
+
+
+# importation des données
+```{r}
+
+pro_data <- read_csv("data/pro/pro_data.csv")
+
+AMP_banyuls<- pro_data %>%
+  filter(ID_ZoneDePeche==7)
+```
+
+# tailles vs taille capture min 
+```{r}
+
+
+
+
+
+```
+
