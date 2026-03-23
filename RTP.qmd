@@ -492,8 +492,8 @@ combinaison <- data_coherente %>%
          FB_poids=FB_A_CM*(Taille_MM/10)^FB_B )
 
 
-combinaison <- combinaison%>%
-  left_join(pro_data%>% select(NomScientifique, spp=NomScientifique))
+#combinaison <- combinaison%>%
+#  left_join(pro_data%>% select(NomScientifique, spp=NomScientifique))
 
 combinaison %>%
   pull(spp) %>%
