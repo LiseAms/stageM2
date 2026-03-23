@@ -208,6 +208,24 @@ pro_data <- pro_data%>%
 
 ```
 
+# lignes non complètes 
+```{r}
+#manquante<- pro_data%>%
+#  filter(!is.na(NomScientifique), is.na(NomFAO) | is.na(CodeFAO)) %>%
+#  distinct(NomScientifique)%>%
+#  mutate(NomFAO= NA, CodeFAO= NA)
+
+
+manquante <- read_delim("data/pro/manquante.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1"))
+
+
+pro_data <- pro_data %>%
+  left_join(manquante, by = "NomScientifique", suffix = c("", "_new"))
+
+```
+
+
 # Création du csv pro_data
 
 ```{r}

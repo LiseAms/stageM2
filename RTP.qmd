@@ -125,7 +125,7 @@ RTP_fishbase <- RTP_fishbase %>%
 RTP_fishbase<- RTP_fishbase %>%
   group_by(Species) %>%
   mutate(a = mean(a, na.rm= TRUE), b= mean(b, na.rm= TRUE) )%>%
-  slice(1)
+  slice(1)%>%
   ungroup()
 
 # on regarde les espèces qui ne sont pas dans la base de données fishbase : 
@@ -171,7 +171,48 @@ sp_manquante <- pro_data%>%
 manq<- intersect(espece_manquante, sp_manquante)
 
 ```
+
+# calcul RTP obsbio
+
 ```{r}
+
+
+#Log Wt = log a + b.log Lt
+
+# essai pour toutes les espéces 
+
+
+ratio<- obsBio %>%
+  mutate(WEIGHT_VALUE_G = WEIGHT_VALUE *1000 )%>%
+  mutate(NomScientifique=SCIENTIFIC_NAME)%>%
+  filter(WEIGHT_METHOD_NAME == "Mesure par un observateur") %>%
+  filter(LENGTH_TOTAL_METHOD_NAME == "Mesure au 1/2 cm par un observateur") %>%
+  mutate(LogL = log10(LENGTH_TOTAL_VALUE)) %>%
+  mutate(LogW = log10(WEIGHT_VALUE_G))
+
+espece_manquante <- pro_data%>%
+  filter(!NomScientifique %in% absente_RTP_fishbase & !NomScientifique %in% absente_RTP_SIH)
+  
+ratio <- ratio%>%
+  filter(NomScientifique%in% espece_manquante$NomScientifique)
+
+
+
+coeffs_RTP <- ratio %>%
+  group_by(NomScientifique) %>%
+  group_modify(~ {
+    mod <- lm(LogW ~ LogL, data = .x)
+    data.frame(
+      a = 10^coef(mod)[1],
+      b = coef(mod)[2]
+    )
+  }) 
+
+
+RTP_obsbio <- pro_data%>%
+  filter(NomScientifique %in% coeffs_RTP$NomScientifique)%>%
+  inner_join(coeffs_RTP)
+
 
 ```
 
@@ -219,14 +260,14 @@ data_coherente <- data_prise_unique %>%
 
 # verification des petites tailles : probablement erreur d'unité . Si taille modifiée alors renseignée "oui" dans colonne modif
 
-data_coherente <- data_coherente %>%
-  mutate(modification=NA)
+#data_coherente <- data_coherente %>%
+ # mutate(modification=NA)
 
 # il faut aller chercher les tailles de captures min pour chq AMP et chq SP : si taille < MAIS no kill=1 alors ok, si Nokil=0 alors verif . 
 
 
-taille_petites <- data_coherente %>%
-  filter(Taille_MM<= 60 & Taille_MM>0)
+#taille_petites <- data_coherente %>%
+ # filter(Taille_MM<= 60 & Taille_MM>0)
 ```
 
 ### filtre tailles trop petites 
@@ -365,6 +406,69 @@ data_coherente_FB %>%
       ggtitle(sp)
   })
 ```
+### RTP obsbio 
+
+```{r}
+
+# attention il faut passer en cm car la bse de donnée est en cm. 
+
+RTP_obsbio<- RTP_obsbio%>%
+  mutate(Taille_MM = Taille_MM/10, 
+         Taille_max_mm=Taille_max_mm/10) %>%
+  rename(Taille_CM= Taille_MM,
+         Taille_max_CM=Taille_max_mm)
+
+
+
+RTP_obsbio <- RTP_obsbio %>%
+  mutate(outlier_valeur= Taille_CM==0 | Poids_g==0) %>%
+  
+  mutate(Poids_RTP=a*Taille_CM^b) %>% # calculer le poids théorique grâce aux données de taille et aux coeff 
+  
+  mutate(Poids_diff = abs(Poids_g- Poids_RTP)) %>% # diff entre poids reel et poids théo
+  
+  mutate(outlier_RTP=Poids_diff/Poids_RTP > 1) %>% # met dans outlier_rtp les lignes ou poids obs vs poids théo >100%
+  
+	mutate(outlier=outlier_valeur | outlier_RTP) %>% # rassemble les outlier de zéro et les outlier de poids 
+
+  mutate(diag=ifelse(outlier_valeur, "Val. manquante", "val. ok")) %>%
+	mutate(diag=ifelse(! outlier_valeur, paste0(diag, " / ", 
+																							ifelse(is.na(outlier_RTP), "RTP inconnue", 
+																										 ifelse(outlier_RTP, "RTP aberrante", 'RTP ok'))), diag))  
+  
+
+RTP_obsbio_clean <- RTP_obsbio %>%
+  filter(!outlier_valeur) %>% # on enlève les outlier = true  : donc on enlève les lignes avec poids ou taille manquante
+  group_by(NomVernaculaire, NomScientifique, CodeFAO) %>%
+  summarise(
+    Taille_min_obs= min(Taille_CM),
+    Taille_max_obs = max(Taille_CM)) %>%
+  reframe(Taille=seq(from=Taille_min_obs, to=Taille_max_obs, by=10)) %>% 
+  ungroup() %>%
+  inner_join(coeffs_RTP %>% select(NomScientifique, a, b)) %>%
+	mutate(Poids=a*Taille^b)
+
+
+
+
+
+RTP_obsbio_clean %>%
+  pull(NomVernaculaire) %>%
+  unique() %>%
+  lapply(function(sp) {
+    ggplot() +
+      geom_line(data = RTP_obsbio_clean %>% filter(NomVernaculaire == sp),
+                aes(x=Taille, y=Poids), color="brown", size = 1) +
+      geom_point(data = RTP_obsbio %>% filter(NomVernaculaire == sp),
+                 aes(x=Taille_CM, y=Poids_g, color=diag)) +
+      xlab("Taille (cm)") + ylab("Poids (g)") +
+	    scale_color_manual(name=NULL, values=c("val. ok / RTP ok"="green", "val. ok / RTP inconnue"="darkgreen", "val. ok / RTP aberrante"="orange", "Val. manquante"="red")) +
+	    theme_bw() +
+	    theme(legend.position="bottom")+
+      ggtitle(sp)
+  })
+
+```
 
 
 
@@ -388,7 +492,8 @@ combinaison <- data_coherente %>%
          FB_poids=FB_A_CM*(Taille_MM/10)^FB_B )
 
 
-
+combinaison <- combinaison%>%
+  left_join(pro_data%>% select(NomScientifique, spp=NomScientifique))
 
 combinaison %>%
   pull(spp) %>%
