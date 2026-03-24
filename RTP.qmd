@@ -47,13 +47,15 @@ RTP_fishbase<- length_weight(
 RTP_Med <- RTP %>% 
 	filter(NOM_VALIDE %in% pro_data$NomScientifique) %>%
 	filter(SECT_COD %in% c("37", "3712")) %>%
-	filter(TMESURE_COD=="LENGTH_TOTAL")
+	filter(TMESURE_COD=="LENGTH_TOTAL") %>%
+  mutate(origine ="med")
 
 # ensuite on va dans le reste des données pour aller chercher les données des espèces qui n'étaient pas dans MED
 RTP_autres <- RTP %>% 
 	filter(NOM_VALIDE %in% pro_data$NomScientifique) %>%
 	filter(! NOM_VALIDE %in% RTP_Med$NOM_VALIDE) %>%
-	filter(TMESURE_COD=="LENGTH_TOTAL")
+	filter(TMESURE_COD=="LENGTH_TOTAL")%>%
+  mutate(origine ="hors med")
 
 
 RTP_SIH <- bind_rows(RTP_Med, RTP_autres)
@@ -76,7 +78,7 @@ RTP_SIH <- RTP_SIH %>%
 RTP_SIH<- RTP_SIH %>%
   group_by(NOM_VALIDE) %>%
   mutate(RTP_COEF_A_CM = mean(RTP_COEF_A_CM, na.rm= TRUE), RTP_COEF_B= mean(RTP_COEF_B, na.rm= TRUE) )%>%
-  slice(1)
+  slice(1)%>%
   ungroup()
 
 
@@ -98,13 +100,15 @@ absente_RTP_SIH <- pro_data %>%
 
 RTP_fishbase_med <- RTP_fishbase %>%
   filter(Type == "TL") %>%
-  filter(str_detect(Locality, regex("mediterranean|spain|italy|greece|france|adriatic", ignore_case = TRUE)))
+  filter(str_detect(Locality, regex("mediterranean|spain|italy|greece|france|adriatic", ignore_case = TRUE))) %>%
+  mutate(origine = "med")
 
 # espèces que je n'ai pas pour la med mais que j'ai dans mes données 
 
 RTP_fb_autres <- RTP_fishbase %>% 
   filter(Type == "TL") %>%
-  filter(!Species %in% RTP_fishbase_med$Species)
+  filter(!Species %in% RTP_fishbase_med$Species)%>%
+  mutate(origine = "hors med")
 
 RTP_fishbase <- bind_rows(RTP_fb_autres, RTP_fishbase_med)
 
@@ -143,7 +147,7 @@ absente_RTP_fishbase<- pro_data %>%
 ```{r}
 
 espece_manquante <- pro_data%>%
-  filter(!NomScientifique %in% absente_RTP_fishbase & !NomScientifique %in% absente_RTP_SIH) %>%
+  filter(NomScientifique %in% absente_RTP_fishbase & NomScientifique %in% absente_RTP_SIH) %>%
   distinct(NomScientifique)%>%
   pull(NomScientifique)
 
@@ -157,7 +161,8 @@ espece_top10_RTP <- espece_top10 %>%
 
 
 ```
-# calcul RTP 
+
+# Obsbio
 ```{r}
 obsBio <- read_delim("data/raw/obsBio.csv", 
     delim = ";", escape_double = FALSE, trim_ws = TRUE)
@@ -188,13 +193,8 @@ ratio<- obsBio %>%
   filter(WEIGHT_METHOD_NAME == "Mesure par un observateur") %>%
   filter(LENGTH_TOTAL_METHOD_NAME == "Mesure au 1/2 cm par un observateur") %>%
   mutate(LogL = log10(LENGTH_TOTAL_VALUE)) %>%
-  mutate(LogW = log10(WEIGHT_VALUE_G))
-
-espece_manquante <- pro_data%>%
-  filter(!NomScientifique %in% absente_RTP_fishbase & !NomScientifique %in% absente_RTP_SIH)
-  
-ratio <- ratio%>%
-  filter(NomScientifique%in% espece_manquante$NomScientifique)
+  mutate(LogW = log10(WEIGHT_VALUE_G))%>%
+  mutate(origine = "med")
 
 
 
@@ -299,7 +299,7 @@ taille_pmngl <- read_excel("data/raw/taille_pmngl.xlsx")
 data_coherente_SIH <- data_coherente %>%
   mutate(outlier_valeur= Taille_MM==0 | Poids_g==0) %>%
   
-  left_join(RTP_SIH %>% select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B)) %>% # ajouter les coeff  dans le tableau 
+  left_join(RTP_SIH %>% select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B, origine)) %>% # ajouter les coeff  dans le tableau 
   
   mutate(Poids_RTP=RTP_COEF_A_CM*Taille_MM^RTP_COEF_B) %>% # calculer le poids théorique grâce aux données de taille et aux coeff 
   
@@ -322,7 +322,7 @@ data_coherente_SIH_clean <- data_coherente_SIH %>%
     Taille_max_obs = max(Taille_MM)) %>%
   reframe(Taille=seq(from=Taille_min_obs, to=Taille_max_obs, by=10)) %>% 
   ungroup() %>%
-	inner_join(RTP_SIH %>% select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B)) %>%
+	inner_join(RTP_SIH %>% select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B, origine)) %>%
 	mutate(Poids=RTP_COEF_A_CM*Taille^RTP_COEF_B)
 
 
@@ -331,16 +331,39 @@ data_coherente_SIH %>%
   pull(NomVernaculaire) %>%
   unique() %>%
   lapply(function(sp) {
+
+    origine_sp <- data_coherente_SIH %>%
+      filter(NomVernaculaire == sp) %>%
+      pull(origine) %>%
+      unique()
+
+    subtitle_text <- paste0(
+      "origine des données : ",
+      ifelse(is.na(origine_sp), "NA", origine_sp))
+
     ggplot() +
-      geom_line(data = data_coherente_SIH_clean %>% filter(NomVernaculaire == sp),
-                aes(x=Taille, y=Poids), color="purple", size =1) +
-      geom_point(data = data_coherente_SIH %>% filter(NomVernaculaire == sp),
-                 aes(x=Taille_MM, y=Poids_g, color=diag)) +
-      xlab("Taille (mm)") + ylab("Poids (g)") +
-	    scale_color_manual(name=NULL, values=c("val. ok / RTP ok"="green", "val. ok / RTP inconnue"="darkgreen", "val. ok / RTP aberrante"="orange", "Val. manquante"="red")) +
-	    theme_bw() +
-	    theme(legend.position="bottom")+
-      ggtitle(sp)
+      geom_line(
+        data = data_coherente_SIH_clean %>% filter(NomVernaculaire == sp),
+        aes(x = Taille, y = Poids),
+        color = "purple", size = 1) +
+      geom_point(
+        data = data_coherente_SIH %>% filter(NomVernaculaire == sp),
+        aes(x = Taille_MM, y = Poids_g, color = diag)) +
+      labs(
+        title = sp,
+        subtitle = subtitle_text,
+        x = "Taille (mm)",
+        y = "Poids (g)") +
+      scale_color_manual(
+        name = NULL,
+        values = c(
+          "val. ok / RTP ok" = "green",
+          "val. ok / RTP inconnue" = "darkgreen",
+          "val. ok / RTP aberrante" = "orange",
+          "Val. manquante" = "red")) +
+      theme_bw() +
+      theme(legend.position = "bottom")
+
   })
 
 ```
@@ -361,7 +384,7 @@ data_coherente_FB<- data_coherente%>%
 data_coherente_FB <- data_coherente_FB %>%
   mutate(outlier_valeur= Taille_CM==0 | Poids_g==0) %>%
   
-  left_join(RTP_fishbase %>% select(NomScientifique=Species, a, b)) %>% # ajouter les coeff  dans le tableau 
+  left_join(RTP_fishbase %>% select(NomScientifique=Species, a, b, origine)) %>% # ajouter les coeff  dans le tableau 
   
   mutate(Poids_RTP=a*Taille_CM^b) %>% # calculer le poids théorique grâce aux données de taille et aux coeff 
   
@@ -385,7 +408,7 @@ data_coherente_FB_clean <- data_coherente_FB %>%
     Taille_max_obs = max(Taille_CM)) %>%
   reframe(Taille=seq(from=Taille_min_obs, to=Taille_max_obs, by=10)) %>% 
   ungroup() %>%
-	inner_join(RTP_fishbase %>% select(NomScientifique=Species, a, b)) %>%
+	inner_join(RTP_fishbase %>% select(NomScientifique=Species, a, b, origine)) %>%
 	mutate(Poids=a*Taille^b)
 
 
@@ -405,12 +428,60 @@ data_coherente_FB %>%
 	    theme(legend.position="bottom")+
       ggtitle(sp)
   })
+
+
+
+data_coherente_FB %>%
+  pull(NomVernaculaire) %>%
+  unique() %>%
+  lapply(function(sp) {
+
+    origine_sp <- data_coherente_FB %>%
+      filter(NomVernaculaire == sp) %>%
+      pull(origine) %>%
+      unique()
+
+    subtitle_text <- paste0(
+      "origine des données : ",
+      ifelse(is.na(origine_sp), "NA", origine_sp))
+    
+    ggplot() +
+      geom_line(
+        data = data_coherente_FB_clean %>% filter(NomVernaculaire == sp),
+        aes(x = Taille, y = Poids),
+        color = "brown", size = 1) +
+      geom_point(
+        data = data_coherente_FB %>% filter(NomVernaculaire == sp),
+        aes(x = Taille_CM, y = Poids_g, color = diag)) +
+      labs(
+        title = sp,
+        subtitle = subtitle_text,
+        x = "Taille (cm)",
+        y = "Poids (g)") +
+      scale_color_manual(
+        name = NULL,
+        values = c(
+          "val. ok / RTP ok" = "green",
+          "val. ok / RTP inconnue" = "darkgreen",
+          "val. ok / RTP aberrante" = "orange",
+          "Val. manquante" = "red")) +
+      theme_bw() +
+      theme(legend.position = "bottom")
+
+  })
+
+
+
 ```
 ### RTP obsbio 
 
 ```{r}
 
 # attention il faut passer en cm car la bse de donnée est en cm. 
+
+RTP_obsbio <- data_coherente%>%
+  filter(NomScientifique %in% coeffs_RTP$NomScientifique)%>%
+  inner_join(coeffs_RTP)
 
 RTP_obsbio<- RTP_obsbio%>%
   mutate(Taille_MM = Taille_MM/10, 

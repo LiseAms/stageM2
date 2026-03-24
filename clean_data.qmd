@@ -178,27 +178,6 @@ pro_data <- pro_data %>%
 
 # Tri des données
 
-
-### Nombre de pêcheurs : enlever les valeurs \<0 et \>?
-
-```{r}
-
-pro_data <- pro_data %>%
-  filter(Nb_de_pêcheurs >=0 & Nb_de_pêcheurs <= 10) # valeur max a changer 
-
-
-```
-
-### Nombre prise : enlever les valeurs \<0 et \> ?
-
-```{r}
-
-pro_data <- pro_data%>%
-  filter(Nb_de_prises>= 0 & Nb_de_prises<= 10) # valeur max a changer 
-
-
-```
-
 ### Lieu de pêche = -1
 
 ```{r}
@@ -208,7 +187,7 @@ pro_data <- pro_data%>%
 
 ```
 
-# lignes non complètes 
+# lignes non complètes pour FAO
 ```{r}
 #manquante<- pro_data%>%
 #  filter(!is.na(NomScientifique), is.na(NomFAO) | is.na(CodeFAO)) %>%
@@ -226,9 +205,184 @@ pro_data <- pro_data %>%
 ```
 
 
+
+# CSV par AMP 
+```{r}
+Banyuls<- pro_data %>%
+  filter(ID_ZoneDePeche==7)
+
+write.csv(Banyuls,"data/pro/data_Banyuls.csv" )
+
+
+PNMGL<- pro_data %>%
+  filter(ID_ZoneDePeche==1)
+
+write.csv(PNMGL,"data/pro/data_PNMGL.csv" )
+
+
+Calanque<- pro_data %>%
+  filter(ID_ZoneDePeche==4)
+
+write.csv(Calanque,"data/pro/data_Calanque.csv" )
+
+
+cap_corse<- pro_data %>%
+  filter(ID_ZoneDePeche==6)
+
+write.csv(cap_corse,"data/pro/data_cap_corse.csv" )
+
+
+bonifacio<- pro_data %>%
+  filter(ID_ZoneDePeche==5)
+
+write.csv(bonifacio,"data/pro/data_bonifacio.csv" )
+
+
+hors_amp<- pro_data %>%
+  filter(ID_ZoneDePeche==8)
+
+write.csv(hors_amp,"data/pro/hors_amp.csv" )
+
+```
+
+
+
+# tri prise/pêcheur 
+
+#### tri PNMGL 
+```{r}
+
+# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
+# si pas sardine ou maquereau, toute prise > 30 est transformée en =1. ceci car dans le PNMGL le quotas max par jour est 30, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
+
+
+PNMGL<- PNMGL%>%
+  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises))
+
+
+
+# pour les pêcheurs : tout ce qui est > 50 on met = 1. 
+PNMGL_chelou <- PNMGL%>%
+  filter(Nb_de_pêcheurs>30)
+
+# il y a une seule ligne : 12 barracuda -> est ce qu'on la supprime ? 
+
+PNMGL<- PNMGL%>%
+  filter(Id_Prise != "﻿34191")
+
+
+  
+```
+
+
+
+#### tri Banyuls
+
+```{r}
+
+# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
+# si pas sardine ou maquereau, toute prise > 10 est transformée en =1. ceci car à banyulsL le quotas max par jour est 10, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
+
+
+Banyuls<- Banyuls %>%
+  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >10 , 1, Nb_de_prises))
+
+```
+
+
+#### tri Calanques
+```{r}
+
+# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
+# si pas sardine ou maquereau, toute prise > 30 est transformée en =1. dans les calanques le quotas max par jour est en poids, mais on peut se dire que 30 indiv ne sera pas inferieur à 7kg + les 15 indiv possibles variable, on peut se d, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
+
+
+Calanque<- Calanque %>%
+  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises))
+
+
+
+```
+
+
+#### tri capcorse 
+```{r}
+
+# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
+# si pas sardine ou maquereau, toute prise > 30 est transformée en =1. dans les calanques le quotas max par jour est en poids, mais on peut se dire que 30 indiv ne sera pas inferieur à 7kg + les 15 indiv possibles variable, on peut se d, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
+
+
+cap_corse<- cap_corse %>%
+  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises))
+
+cap_corse_chelou <- cap_corse%>%
+  filter(Nb_de_prises>50)
+
+```
+
+
+#### tri bonifacio
+```{r}
+
+# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
+# si pas sardine ou maquereau, toute prise > 30 est transformée en =1. dans les calanques le quotas max par jour est en poids, mais on peut se dire que 30 indiv ne sera pas inferieur à 7kg + les 15 indiv possibles variable, on peut se d, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
+
+
+bonifacio<- bonifacio %>%
+  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises))
+
+bonifacio_chelou <- bonifacio%>%
+  filter(Nb_de_prises>50)
+
+```
+
+# tri dans le pro_data 
+```{r}
+
+pro_data<- pro_data%>%
+  # PNMGL
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & Nb_de_prises >30 , 1, Nb_de_prises))%>%
+  filter(Id_Prise != "﻿34191") %>%
+  
+  # banyuls
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux"  & Nb_de_prises >10 , 1, Nb_de_prises)) %>%
+  
+  #calanques
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & Nb_de_prises >30 , 1, Nb_de_prises)) %>%
+  
+  #capcorse
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==6 & Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  # plus restrictif ? 
+  
+  #bonifacio 
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==5 & Nb_de_prises>100 , 1, Nb_de_prises)) %>%
+  # plus restrictif ?
+  
+  filter(Nb_de_pêcheurs < 50 & Nb_de_pêcheurs >= 0) # premier gros tri pour enlever les nb aberrants, mais des fois concours de pêche donc garder un certain nombre
+
+  
+  
+  
+
+
+```
+
+
+
 # Création du csv pro_data
 
 ```{r}
 write.csv(pro_data,"data/pro/pro_data.csv" )
 ```
+
+
+
 

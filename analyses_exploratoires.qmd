@@ -36,7 +36,7 @@ point_carte <- pro_data %>%
   st_as_sf(coords = c("Longitude", "Latitude"), crs =4326) %>%
   st_transform(2154)
 
-#mapview(point_carte)
+mapview(point_carte)
 
 ```
 
