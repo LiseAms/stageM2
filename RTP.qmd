@@ -36,11 +36,41 @@ RTP_fishbase<- length_weight(
   species_list =espece_peche$NomScientifique
 )
 
+# données ObsBio
+obsBio <- read_delim("data/raw/obsBio.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 ```
+# Taille min de capture
+```{r}
+taille_banyuls <- read_delim("data/raw/taille_banyuls.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE,  locale = locale(encoding = "latin1"))
+taille_calanque <- read_excel("data/raw/taille_calanque.xlsx")
+taille_cap_corse <- read_excel("data/raw/taille_cap_corse.xlsx")
+taille_pmngl <- read_delim("data/raw/taille_pmngl.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1"))
+#taille_bonifacio a faire 
 
 
-# RTP SIH
+
+tailles_capture <- bind_rows(
+  taille_banyuls  %>% select(NomScientifique, taille_min_MM) %>% mutate(ID_ZoneDePeche = "Banyuls"),
+  taille_calanque %>% select(NomScientifique, taille_min_MM) %>% mutate(ID_ZoneDePeche = "Calanque"),
+  taille_cap_corse %>% select(NomScientifique, taille_min_MM) %>% mutate(ID_ZoneDePeche = "CapCorse"),
+  taille_pmngl %>% select(NomScientifique, taille_min_MM)   %>% mutate(ID_ZoneDePeche = "PNMGL")
+)
+
+tailles_capture <- tailles_capture %>%
+  select(NomScientifique, ID_ZoneDePeche, taille_min_MM) %>%
+  distinct(NomScientifique, ID_ZoneDePeche, .keep_all = TRUE) %>%  # 1 valeur par espèce × zone
+  pivot_wider(
+    id_cols    = NomScientifique,
+    names_from = ID_ZoneDePeche,
+    values_from = taille_min_MM
+  )
+```
+
+#données SIH
 
 ```{r}
 # dans les données on ne garde en premier que les RTP de mediterranée : code 37 et 3712
@@ -73,7 +103,7 @@ RTP_SIH <- RTP_SIH %>%
   slice_max( ANNEE, n=1) %>%
   ungroup()
 
-# 3ème tri : moyenne des ratio 
+# 3ème tri : moyenne des ratio restants
 
 RTP_SIH<- RTP_SIH %>%
   group_by(NOM_VALIDE) %>%
@@ -86,19 +116,19 @@ RTP_SIH<- RTP_SIH %>%
 # Regarder quelles espèces de notre jeu de données n'est pas dans les RTP_SIH : 
 
 absente_RTP_SIH <- pro_data %>%
-  filter(!NomScientifique %in% RTP$NOM_VALIDE)%>%
+  filter(!NomScientifique %in% RTP_SIH$NOM_VALIDE)%>%
   distinct(NomScientifique) %>%
   pull(NomScientifique)
   
 
 ```
 
-# RTP fishbase 
+#données fishbase 
 
 ```{r}
 # dans la base de donnée, on ne garde que les données de mediterranée : donc tri par les pays cotiers et le nom des mers. 
 
-RTP_fishbase_med <- RTP_fishbase %>%
+RTP_fb_med <- RTP_fishbase %>%
   filter(Type == "TL") %>%
   filter(str_detect(Locality, regex("mediterranean|spain|italy|greece|france|adriatic", ignore_case = TRUE))) %>%
   mutate(origine = "med")
@@ -107,10 +137,10 @@ RTP_fishbase_med <- RTP_fishbase %>%
 
 RTP_fb_autres <- RTP_fishbase %>% 
   filter(Type == "TL") %>%
-  filter(!Species %in% RTP_fishbase_med$Species)%>%
+  filter(!Species %in% RTP_fb_med$Species)%>%
   mutate(origine = "hors med")
 
-RTP_fishbase <- bind_rows(RTP_fb_autres, RTP_fishbase_med)
+RTP_fishbase <- bind_rows(RTP_fb_autres, RTP_fb_med)
 
 # il y a plusieurs ratio par espèces : tri pour garder les ratios les plus adaptés 
 
@@ -141,15 +171,60 @@ absente_RTP_fishbase<- pro_data %>%
 
 ```
 
+
+#données Obsbio
+```{r}
+
+
+ratio<- obsBio %>%
+  mutate(WEIGHT_VALUE_G = WEIGHT_VALUE *1000 )%>% # on met en g les poids 
+  mutate(NomScientifique=SCIENTIFIC_NAME)%>% 
+  filter(WEIGHT_METHOD_NAME == "Mesure par un observateur") %>%
+  filter(LENGTH_TOTAL_METHOD_NAME == "Mesure au 1/2 cm par un observateur") %>%
+  mutate(LogL = log10(LENGTH_TOTAL_VALUE)) %>%
+  mutate(LogW = log10(WEIGHT_VALUE_G))%>%
+  mutate(origine = "med")
+
+
+RTP_obsbio <- ratio %>%
+  group_by(NomScientifique) %>%
+  group_modify(~ {
+    mod <- lm(LogW ~ LogL, data = .x)
+    data.frame(
+      a = 10^coef(mod)[1],
+      b = coef(mod)[2]
+    )
+  }) 
+
+RTP_obsbio <- RTP_obsbio%>%
+  inner_join(ratio, by="NomScientifique" )
+
+
+absente_RTP_obsbio <- pro_data%>%
+  filter(!NomScientifique %in% obsBio$SCIENTIFIC_NAME) %>%
+  distinct(NomScientifique)%>%
+  pull(NomScientifique)
+
+
+```
+
+
 # espèces sans RTP du tout 
 
 
 ```{r}
 
 espece_manquante <- pro_data%>%
-  filter(NomScientifique %in% absente_RTP_fishbase & NomScientifique %in% absente_RTP_SIH) %>%
-  distinct(NomScientifique)%>%
-  pull(NomScientifique)
+  select(NomVernaculaire, NomScientifique)%>%
+  filter(NomScientifique %in% absente_RTP_fishbase & NomScientifique %in% absente_RTP_SIH & NomScientifique %in% absente_RTP_obsbio) %>%
+  distinct(NomVernaculaire, NomScientifique)
+
+espece_manquante<-espece_manquante%>%
+  select(NomVernaculaire, NomScientifique)%>%
+  left_join(espece_peche %>% select(NomVernaculaire, total))
+
+
+write.csv(espece_manquante, "data/pro/espece_manquante.csv")
 
 
 # les 10 espèces les plus pêchées sont-elles dans les données ? 
@@ -162,59 +237,7 @@ espece_top10_RTP <- espece_top10 %>%
 
 ```
 
-# Obsbio
-```{r}
-obsBio <- read_delim("data/raw/obsBio.csv", 
-    delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
-
-sp_manquante <- pro_data%>%
-  filter(!NomScientifique %in% obsBio$SCIENTIFIC_NAME) %>%
-  distinct(NomScientifique)%>%
-  pull(NomScientifique)
-
-manq<- intersect(espece_manquante, sp_manquante)
-
-```
-
-# calcul RTP obsbio
-
-```{r}
-
-
-#Log Wt = log a + b.log Lt
-
-# essai pour toutes les espéces 
-
-
-ratio<- obsBio %>%
-  mutate(WEIGHT_VALUE_G = WEIGHT_VALUE *1000 )%>%
-  mutate(NomScientifique=SCIENTIFIC_NAME)%>%
-  filter(WEIGHT_METHOD_NAME == "Mesure par un observateur") %>%
-  filter(LENGTH_TOTAL_METHOD_NAME == "Mesure au 1/2 cm par un observateur") %>%
-  mutate(LogL = log10(LENGTH_TOTAL_VALUE)) %>%
-  mutate(LogW = log10(WEIGHT_VALUE_G))%>%
-  mutate(origine = "med")
-
-
-
-coeffs_RTP <- ratio %>%
-  group_by(NomScientifique) %>%
-  group_modify(~ {
-    mod <- lm(LogW ~ LogL, data = .x)
-    data.frame(
-      a = 10^coef(mod)[1],
-      b = coef(mod)[2]
-    )
-  }) 
-
-
-RTP_obsbio <- pro_data%>%
-  filter(NomScientifique %in% coeffs_RTP$NomScientifique)%>%
-  inner_join(coeffs_RTP)
-
-
-```
 
 
 
@@ -237,9 +260,8 @@ pro_data <- pro_data %>%
 pro_data <- pro_data %>%
   mutate(Taille_max_mm= as.numeric(Taille_max_mm), 
          Poids_max_g= as.numeric(Poids_max_g))
-
-
-
+  
+  
 #il faut d'abord enlever les lignes ou les prises sont multiples: on ne sait pas si la taille est moyenne ou max ou min, pareil pour le poids
 
 
@@ -248,39 +270,53 @@ data_prise_unique <- pro_data %>%
 
 
 #on enlève les tailles et les poids abérrants : donc ceux qui sont 10% au dessus de la taille et du poids max reportés : on les met dans un autre tableau pour les traiter plus tard. 
-erreur_taille_poids <- data_prise_unique %>%
-  filter(Taille_MM> Taille_max_mm*1.1 | is.na(Taille_max_mm)|
-         Poids_g> Poids_max_g*1.1 )
 
 
-#les données qui sont dans les tailles cohérentes sont dans un tableau data_cohérent
+erreur_supp <- data_prise_unique %>%
+  filter(
+  (Taille_MM > Taille_max_mm * 1.1 & !is.na(Taille_max_mm)) |
+  (Poids_g > Poids_max_g * 1.1 & !is.na(Poids_max_g) ) 
+  )
+
+
+erreur_inf <- data_prise_unique %>%
+  left_join(tailles_capture %>% select( NomScientifique, Banyuls, PNMGL, CapCorse, Calanque),
+            by = "NomScientifique") %>%
+  mutate(taille_min_zone = case_when(
+    ID_ZoneDePeche==1 ~ PNMGL, 
+    ID_ZoneDePeche==4 ~ Calanque, 
+    ID_ZoneDePeche==6 ~ CapCorse, 
+    ID_ZoneDePeche==7 ~ Banyuls
+  )) %>%
+  filter(
+  !is.na(taille_min_zone),
+  Taille_MM < taille_min_zone * 0.9,
+  Taille_MM > 0)
+  
+
+
 data_coherente <- data_prise_unique %>%
-  filter(Taille_MM<= Taille_max_mm*1.1 | !is.na(Taille_max_mm)|
-         Poids_g<= Poids_max_g*1.1 & !is.na(Poids_max_g) )
+  
+  left_join(tailles_capture %>% select(NomScientifique, Banyuls, PNMGL, CapCorse, Calanque),
+            by = "NomScientifique") %>%
+ 
+  mutate(taille_min_zone = case_when(
+    ID_ZoneDePeche == 1 ~ PNMGL, 
+    ID_ZoneDePeche == 4 ~ Calanque, 
+    ID_ZoneDePeche == 6 ~ CapCorse, 
+    ID_ZoneDePeche == 7 ~ Banyuls
+  )) %>%
+ 
+  filter(
+    #  MAX : TAILLE et POIDS <= 110% des max (ou NA)
+    (Taille_MM <= Taille_max_mm * 1.1 | is.na(Taille_max_mm)) &
+    (Poids_g <= Poids_max_g * 1.1 | is.na(Poids_max_g)) &
+    # MIN : Taille >= 90% de la taille min (ou pas de règle)
+    (Taille_MM >= taille_min_zone * 0.9 | is.na(taille_min_zone) | Taille_MM ==0)
+  )
 
-# verification des petites tailles : probablement erreur d'unité . Si taille modifiée alors renseignée "oui" dans colonne modif
-
-#data_coherente <- data_coherente %>%
- # mutate(modification=NA)
-
-# il faut aller chercher les tailles de captures min pour chq AMP et chq SP : si taille < MAIS no kill=1 alors ok, si Nokil=0 alors verif . 
-
-
-#taille_petites <- data_coherente %>%
- # filter(Taille_MM<= 60 & Taille_MM>0)
-```
-
-### filtre tailles trop petites 
-#### données taille capture des AMP 
-```{r}
-taille_banyuls <- read_excel("data/raw/taille_banyuls.xlsx")
-taille_calanque <- read_excel("data/raw/taille_calanque.xlsx")
-taille_cap_corse <- read_excel("data/raw/taille_cap_corse.xlsx")
-taille_pmngl <- read_excel("data/raw/taille_pmngl.xlsx")
-```
-
-#### fitre taille min 
-```{r}
+# verification pour être sur que toutes les données sont quelque part dans un tableau et pas de doublons 
+nrow(data_prise_unique) == nrow(erreur_supp) + nrow(erreur_inf) + nrow(data_coherente)
 
 ```
 
@@ -291,7 +327,7 @@ taille_pmngl <- read_excel("data/raw/taille_pmngl.xlsx")
 # analyses taille-poids
 
 
-### RTP pour chaque sp avec données SIH 
+### RTP SIH 
 ```{r}
 # avec les données SIH : 
 
@@ -368,7 +404,7 @@ data_coherente_SIH %>%
 
 ```
 
-### RTP pour chaque sp avec données fishbase
+### RTP fishbase
 ```{r}
 
 # attention il faut passer en cm car la bse de donnée est en cm. 
@@ -476,22 +512,25 @@ data_coherente_FB %>%
 ### RTP obsbio 
 
 ```{r}
+# calcul RTP obsbio
+
 
 # attention il faut passer en cm car la bse de donnée est en cm. 
 
-RTP_obsbio <- data_coherente%>%
-  filter(NomScientifique %in% coeffs_RTP$NomScientifique)%>%
-  inner_join(coeffs_RTP)
+data_coherente_obsbio <- data_coherente%>%
+  filter(NomScientifique %in% RTP_obsbio$NomScientifique)%>%
+  left_join(RTP_obsbio %>% select(NomScientifique, a, b, origine))
 
-RTP_obsbio<- RTP_obsbio%>%
+data_coherente_obsbio<- data_coherente_obsbio%>%
   mutate(Taille_MM = Taille_MM/10, 
          Taille_max_mm=Taille_max_mm/10) %>%
   rename(Taille_CM= Taille_MM,
-         Taille_max_CM=Taille_max_mm)
+         Taille_max_CM=Taille_max_mm) %>%
+  mutate(origine ="med")
 
 
 
-RTP_obsbio <- RTP_obsbio %>%
+data_coherente_obsbio <- data_coherente_obsbio %>%
   mutate(outlier_valeur= Taille_CM==0 | Poids_g==0) %>%
   
   mutate(Poids_RTP=a*Taille_CM^b) %>% # calculer le poids théorique grâce aux données de taille et aux coeff 
@@ -508,7 +547,7 @@ RTP_obsbio <- RTP_obsbio %>%
 																										 ifelse(outlier_RTP, "RTP aberrante", 'RTP ok'))), diag))  
   
 
-RTP_obsbio_clean <- RTP_obsbio %>%
+data_coherente_obsbio_clean <- data_coherente_obsbio %>%
   filter(!outlier_valeur) %>% # on enlève les outlier = true  : donc on enlève les lignes avec poids ou taille manquante
   group_by(NomVernaculaire, NomScientifique, CodeFAO) %>%
   summarise(
@@ -516,14 +555,14 @@ RTP_obsbio_clean <- RTP_obsbio %>%
     Taille_max_obs = max(Taille_CM)) %>%
   reframe(Taille=seq(from=Taille_min_obs, to=Taille_max_obs, by=10)) %>% 
   ungroup() %>%
-  inner_join(coeffs_RTP %>% select(NomScientifique, a, b)) %>%
+  inner_join(RTP_obsbio %>% select(NomScientifique, a, b)) %>%
 	mutate(Poids=a*Taille^b)
 
 
 
 
 
-RTP_obsbio_clean %>%
+data_coherente_obsbio %>%
   pull(NomVernaculaire) %>%
   unique() %>%
   lapply(function(sp) {
@@ -539,43 +578,104 @@ RTP_obsbio_clean %>%
       ggtitle(sp)
   })
 
+
+data_coherente_obsbio %>%
+  pull(NomVernaculaire) %>%
+  unique() %>%
+  lapply(function(sp) {
+
+    origine_sp <- data_coherente_obsbio %>%
+      filter(NomVernaculaire == sp) %>%
+      pull(origine) %>%
+      unique()
+
+    subtitle_text <- paste0(
+      "origine des données : ",
+      ifelse(is.na(origine_sp), "NA", origine_sp))
+    
+    ggplot() +
+      geom_line(
+        data = data_coherente_obsbio_clean %>% filter(NomVernaculaire == sp),
+        aes(x = Taille, y = Poids),
+        color = "black", size = 1) +
+      geom_point(
+        data = data_coherente_obsbio %>% filter(NomVernaculaire == sp),
+        aes(x = Taille_CM, y = Poids_g, color = diag)) +
+      labs(
+        title = sp,
+        subtitle = subtitle_text,
+        x = "Taille (cm)",
+        y = "Poids (g)") +
+      scale_color_manual(
+        name = NULL,
+        values = c(
+          "val. ok / RTP ok" = "green",
+          "val. ok / RTP inconnue" = "darkgreen",
+          "val. ok / RTP aberrante" = "orange",
+          "Val. manquante" = "red")) +
+      theme_bw() +
+      theme(legend.position = "bottom")
+
+  })
+
+
+
+
 ```
 
 
 
-### combiner les 2 RTP 
+### combiner les 3 RTP 
+
+####Données de mediterranée 
 ```{r}
 
 
 
 select_sih <- RTP_SIH %>%
-  select(spp=NOM_VALIDE, SIH_RTP_COEF_A_CM=RTP_COEF_A_CM, SIH_RTP_COEF_B=RTP_COEF_B)
+  select(spp=NOM_VALIDE, SIH_RTP_COEF_A_CM=RTP_COEF_A_CM, SIH_RTP_COEF_B=RTP_COEF_B, origine_SIH = origine)
 select_FB <- RTP_fishbase %>%
-  select(spp=Species, FB_A_CM=a, FB_B=b)
+  select(spp=Species, FB_A_CM=a, FB_B=b, origine_FB= origine)
+select_obsbio <- RTP_obsbio%>%
+  select(spp = NomScientifique, obsbio_a= a, obsbio_b = b, origine_obsbio = origine)
+
 
 combinaison <- select_FB %>%
-  inner_join(select_sih)
+  inner_join(select_sih)%>%
+  inner_join(select_obsbio)
+
 
 combinaison <- data_coherente %>%
   select(spp=NomScientifique, Taille_MM=Taille_MM) %>%
   inner_join(combinaison) %>%
   mutate(SIH_poids=SIH_RTP_COEF_A_CM * (Taille_MM)^SIH_RTP_COEF_B,
-         FB_poids=FB_A_CM*(Taille_MM/10)^FB_B )
+         FB_poids=FB_A_CM*(Taille_MM/10)^FB_B, 
+         obsbio_poids = obsbio_a * (Taille_MM / 10) ^ obsbio_b )
+
+combinaison_med <- combinaison %>%
+  filter(origine_FB == "med") %>%
+  filter(origine_SIH == "med") %>%
+  filter (origine_obsbio == "med")
+
+combinaison_hors_med <- combinaison %>%
+  filter(origine_FB == "hors med") %>%
+  filter(origine_SIH == "hors med")
 
 
-#combinaison <- combinaison%>%
-#  left_join(pro_data%>% select(NomScientifique, spp=NomScientifique))
 
-combinaison %>%
+
+combinaison_med %>%
   pull(spp) %>%
   unique() %>%
   lapply(function(sp) {
     ggplot() +
-      geom_line(data = combinaison %>% filter(spp == sp),
+      geom_line(data = combinaison_med %>% filter(spp == sp),
                 aes(x= Taille_MM, y=SIH_poids), color="brown", size = 1) +
-      geom_line(data = combinaison %>% filter(spp == sp),
+      geom_line(data = combinaison_med %>% filter(spp == sp),
                 aes(x=Taille_MM, y=FB_poids), color="purple", size =1)+ theme_bw() +
-      xlab("Taille (cm)") + ylab("Poids (g)") +
+      geom_line(data = combinaison_med %>% filter(spp == sp),
+                aes(x=Taille_MM, y=obsbio_poids), color="blue", size =1)+ theme_bw() +
+      xlab("Taille (mm)") + ylab("Poids (g)") +
 	    theme(legend.position="bottom")+
       ggtitle(sp)
   })
