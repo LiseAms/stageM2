@@ -181,7 +181,7 @@ pro_data <- pro_data %>%
 ### Lieu de pêche = -1
 
 ```{r}
-
+# 2 lignes sont concernées, on enlève car probablement une saisie erreur 
 pro_data <- pro_data%>%
   filter(ID_ZoneDePeche != -1)
 
@@ -373,6 +373,24 @@ pro_data<- pro_data%>%
   
 
 
+```
+
+
+# tri technique de pêche 
+
+```{r}
+technique <- pro_data%>%
+  distinct(Technique)%>%
+  pull(Technique)
+
+
+engin <- pro_data%>%
+  distinct(Engin)%>%
+  pull(Engin)
+
+combinaison_tech_engin <- pro_data%>%
+  distinct(Technique, Engin) %>%
+  arrange(Technique, Engin)
 ```
 
 

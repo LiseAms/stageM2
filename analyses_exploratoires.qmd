@@ -410,7 +410,7 @@ espece_peche <- espece_peche %>%
             by= "CodeFAO") %>%
   arrange(desc(total))
 
-nb_sp <- nrow(espece_peche)
+
 
 ```
 
@@ -471,3 +471,5 @@ ggplot(bredouille_AMP, aes(x = Nom_ZoneDePeche, y = n, fill = n)) +
         axis.text.x = element_text(angle = 30, hjust = 1))
 
 ```
+# techniques et engin de pêche 
+

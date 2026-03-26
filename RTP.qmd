@@ -29,7 +29,7 @@ pro_data <- read_csv("data/pro/pro_data.csv")
 
 
 #données SIH 
-RTP <- read_delim(file="data/raw/ISIH-501892-taille_poids-20220131174507/ISIH-501892-taille_poids-20220131174507.txt", delim=";")
+RTP_SIH <- read_delim(file="data/raw/ISIH-501892-taille_poids-20220131174507/ISIH-501892-taille_poids-20220131174507.txt", delim=";")
 
 #données fishbase 
 RTP_fishbase<- length_weight(
@@ -74,14 +74,14 @@ tailles_capture <- tailles_capture %>%
 
 ```{r}
 # dans les données on ne garde en premier que les RTP de mediterranée : code 37 et 3712
-RTP_Med <- RTP %>% 
+RTP_Med <- RTP_SIH %>% 
 	filter(NOM_VALIDE %in% pro_data$NomScientifique) %>%
 	filter(SECT_COD %in% c("37", "3712")) %>%
 	filter(TMESURE_COD=="LENGTH_TOTAL") %>%
   mutate(origine ="med")
 
 # ensuite on va dans le reste des données pour aller chercher les données des espèces qui n'étaient pas dans MED
-RTP_autres <- RTP %>% 
+RTP_autres <- RTP_SIH %>% 
 	filter(NOM_VALIDE %in% pro_data$NomScientifique) %>%
 	filter(! NOM_VALIDE %in% RTP_Med$NOM_VALIDE) %>%
 	filter(TMESURE_COD=="LENGTH_TOTAL")%>%
@@ -453,24 +453,6 @@ data_coherente_FB %>%
   pull(NomVernaculaire) %>%
   unique() %>%
   lapply(function(sp) {
-    ggplot() +
-      geom_line(data = data_coherente_FB_clean %>% filter(NomVernaculaire == sp),
-                aes(x=Taille, y=Poids), color="brown", size = 1) +
-      geom_point(data = data_coherente_FB %>% filter(NomVernaculaire == sp),
-                 aes(x=Taille_CM, y=Poids_g, color=diag)) +
-      xlab("Taille (cm)") + ylab("Poids (g)") +
-	    scale_color_manual(name=NULL, values=c("val. ok / RTP ok"="green", "val. ok / RTP inconnue"="darkgreen", "val. ok / RTP aberrante"="orange", "Val. manquante"="red")) +
-	    theme_bw() +
-	    theme(legend.position="bottom")+
-      ggtitle(sp)
-  })
-
-
-
-data_coherente_FB %>%
-  pull(NomVernaculaire) %>%
-  unique() %>%
-  lapply(function(sp) {
 
     origine_sp <- data_coherente_FB %>%
       filter(NomVernaculaire == sp) %>%
@@ -562,21 +544,6 @@ data_coherente_obsbio_clean <- data_coherente_obsbio %>%
 
 
 
-data_coherente_obsbio %>%
-  pull(NomVernaculaire) %>%
-  unique() %>%
-  lapply(function(sp) {
-    ggplot() +
-      geom_line(data = RTP_obsbio_clean %>% filter(NomVernaculaire == sp),
-                aes(x=Taille, y=Poids), color="brown", size = 1) +
-      geom_point(data = RTP_obsbio %>% filter(NomVernaculaire == sp),
-                 aes(x=Taille_CM, y=Poids_g, color=diag)) +
-      xlab("Taille (cm)") + ylab("Poids (g)") +
-	    scale_color_manual(name=NULL, values=c("val. ok / RTP ok"="green", "val. ok / RTP inconnue"="darkgreen", "val. ok / RTP aberrante"="orange", "Val. manquante"="red")) +
-	    theme_bw() +
-	    theme(legend.position="bottom")+
-      ggtitle(sp)
-  })
 
 
 data_coherente_obsbio %>%
@@ -597,7 +564,7 @@ data_coherente_obsbio %>%
       geom_line(
         data = data_coherente_obsbio_clean %>% filter(NomVernaculaire == sp),
         aes(x = Taille, y = Poids),
-        color = "black", size = 1) +
+        color = "blue", size = 1) +
       geom_point(
         data = data_coherente_obsbio %>% filter(NomVernaculaire == sp),
         aes(x = Taille_CM, y = Poids_g, color = diag)) +
@@ -627,10 +594,7 @@ data_coherente_obsbio %>%
 
 ### combiner les 3 RTP 
 
-####Données de mediterranée 
 ```{r}
-
-
 
 select_sih <- RTP_SIH %>%
   select(spp=NOM_VALIDE, SIH_RTP_COEF_A_CM=RTP_COEF_A_CM, SIH_RTP_COEF_B=RTP_COEF_B, origine_SIH = origine)
@@ -645,8 +609,9 @@ combinaison <- select_FB %>%
   inner_join(select_obsbio)
 
 
+
 combinaison <- data_coherente %>%
-  select(spp=NomScientifique, Taille_MM=Taille_MM) %>%
+  select(spp=NomScientifique, Taille_MM=Taille_MM, Poids_g, NomVernaculaire) %>%
   inner_join(combinaison) %>%
   mutate(SIH_poids=SIH_RTP_COEF_A_CM * (Taille_MM)^SIH_RTP_COEF_B,
          FB_poids=FB_A_CM*(Taille_MM/10)^FB_B, 
@@ -661,36 +626,72 @@ combinaison_hors_med <- combinaison %>%
   filter(origine_FB == "hors med") %>%
   filter(origine_SIH == "hors med")
 
+```
 
+
+
+####mediterranée 
+```{r}
 
 
 combinaison_med %>%
   pull(spp) %>%
   unique() %>%
   lapply(function(sp) {
-    ggplot() +
-      geom_line(data = combinaison_med %>% filter(spp == sp),
-                aes(x= Taille_MM, y=SIH_poids), color="brown", size = 1) +
-      geom_line(data = combinaison_med %>% filter(spp == sp),
-                aes(x=Taille_MM, y=FB_poids), color="purple", size =1)+ theme_bw() +
-      geom_line(data = combinaison_med %>% filter(spp == sp),
-                aes(x=Taille_MM, y=obsbio_poids), color="blue", size =1)+ theme_bw() +
-      xlab("Taille (mm)") + ylab("Poids (g)") +
-	    theme(legend.position="bottom")+
-      ggtitle(sp)
+    df_sp <- combinaison_med %>% filter(spp == sp)
+    nom <- unique(df_sp$NomVernaculaire)
+
+    ggplot(df_sp, aes(x = Taille_MM)) +
+      geom_line(aes(y = SIH_poids, color = "SIH"), size = 1) +
+      geom_line(aes(y = FB_poids, color = "FB"), size = 1) +
+      geom_line(aes(y = obsbio_poids, color = "ObsBio"), size = 1) +
+      geom_point(aes(y = Poids_g)) +
+  
+    scale_color_manual(
+      name = "Source",
+      values = c("SIH" = "brown", "FB" = "purple", "ObsBio" = "blue") )+
+        
+      xlab("Taille (mm)") +
+      ylab("Poids (g)") +
+      theme_bw() +
+      theme(legend.position = "right") +
+      ggtitle(nom)
   })
 
-
 ```
 
-#test correction tableau erreur 
 
+#### hors mediterranée 
 ```{r}
 
-#erreur_taille_poids <- erreur_taille_poids%>%
-  
-```
+combinaison_hors_med %>%
+  pull(spp) %>%
+  unique() %>%
+  lapply(function(sp) {
+    df_sp <- combinaison_hors_med %>% filter(spp == sp)
+    nom <- unique(df_sp$NomVernaculaire)
 
+    ggplot(df_sp, aes(x = Taille_MM)) +
+      geom_line(aes(y = SIH_poids, color = "SIH"), size = 1) +
+      geom_line(aes(y = FB_poids, color = "FB"), size = 1) +
+      geom_line(aes(y = obsbio_poids, color = "ObsBio"), size = 1) +
+      geom_point(aes(y = Poids_g)) +
+  
+    scale_color_manual(
+      name = "Source",
+      values = c("SIH" = "brown", "FB" = "purple", "ObsBio" = "blue")
+   ) +
+      
+      
+      xlab("Taille (mm)") +
+      ylab("Poids (g)") +
+      
+      theme_bw() +
+      theme(legend.position = "right") +
+      ggtitle(nom)
+  })
+
+```
 
 
 
