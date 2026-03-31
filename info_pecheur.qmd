@@ -1,0 +1,176 @@
+---
+title: "data_pecheurs"
+format: html
+editor: visual
+---
+
+```{r}
+library(readr)
+library(readxl)
+library(dplyr)
+library(rmarkdown)
+library(tidyverse)
+library(sf)
+library(stringr)
+library(mapview)
+library(lubridate)
+library(scales)
+library(rfishbase)
+library(giscoR)
+library(tidygeocoder)
+```
+
+```{r}
+Info_pecheur<- read_delim("data/raw/EnqueteInformationSurlePecheur_30-03-2026_1774863842.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE, 
+    skip = 2)
+
+colnames(Info_pecheur) <- gsub(" ","_", colnames(Info_pecheur))
+
+```
+
+# Age 
+```{r}
+
+
+Info_pecheur<- Info_pecheur %>%
+  mutate(Age = if_else (Age>1930 & Age<2024 , 2026 - Age, Age))%>%
+  mutate(Age = if_else (Age> 100, NA, Age))
+
+ggplot(data=Info_pecheur) +
+	geom_histogram(mapping=aes(x=Age)) +
+	theme_bw()
+```
+
+# nb sortie par an 
+```{r}
+ordre_prises <- c("1 sortie", "2 à 3 sorties", "4 à 10", "11 à 15", "16 à 30", "31 à 50",
+                "Plus de 50", NA)
+
+
+ggplot(data=Info_pecheur) +
+	geom_histogram(mapping=aes(x=Nombre_sortie_par_an), stat="count") +
+	theme_bw()
+
+
+ordre_prises <- c("1 sortie", "2 à 3 sorties", "4 à 10", "11 à 15",
+                  "16 à 30", "31 à 50", "Plus de 50")
+
+Info_pecheur$Nombre_sortie_par_an <- factor(
+  Info_pecheur$Nombre_sortie_par_an,
+  levels = ordre_prises
+)
+
+ggplot(Info_pecheur, aes(x = Nombre_sortie_par_an)) +
+  geom_bar() +
+  theme_bw()
+
+```
+# études 
+
+```{r}
+
+ggplot(data=Info_pecheur) +
+	geom_histogram(mapping=aes(x=Niveau_de_diplôme), stat="count") +
+	theme_bw()
+
+
+```
+# professions différentes 
+```{r}
+
+espece_peche <- pro_data %>%
+  group_by(CodeFAO) %>%
+  summarise(total= sum(Nb_de_prises, na.rm=T), .groups = 'drop') %>%
+  arrange(desc(total)) 
+ 
+espece_peche <- espece_peche %>%
+  left_join(pro_data %>%
+              select(CodeFAO, NomVernaculaire, NomScientifique)%>%
+              distinct(),
+            by= "CodeFAO") %>%
+  arrange(desc(total))
+
+```
+
+# heatmap region 
+```{r}
+
+fr_regions <- gisco_get_nuts(country = "FR", nuts_level = 1)
+
+# erreur dans le nom des régions 
+Info_pecheur<- Info_pecheur%>%
+  mutate(Region = str_replace(Region, "Huats de France", "Hauts de France"))%>%
+  mutate(Region= str_replace(Region, "PACA","Provence-Alpes-Côte d’Azur"))%>%
+  mutate(Region= str_replace(Region, "Hauts de France","Hauts-de-France"))%>%
+  mutate(Region= str_replace(Region, "Auvergne-Rhone-Alpes","Auvergne-Rhône-Alpes"))%>%
+  mutate(Region= str_replace(Region, "Grand-Est","Grand Est"))%>%
+  mutate(Region= str_replace(Region, "Centre-Val de Loire","Centre — Val de Loire"))
+  
+  
+  	
+
+  
+
+
+nb_region <- Info_pecheur%>%
+  count(Region)
+
+heat_map_region <- fr_regions %>%
+  left_join(nb_region, by = c("NUTS_NAME" = "Region"))
+
+heat_map_region<- heat_map_region%>%
+  filter(NUTS_NAME != "RUP FR — Régions Ultrapériphériques Françaises")
+  
+
+
+ggplot(heat_map_region) +
+  geom_sf(aes(fill = n)) +
+  scale_fill_viridis_c(option = "plasma", na.value = "grey90") +
+  theme_minimal() +
+  labs(fill = "Nombre de personnes")
+
+```
+
+# heatmap code postal 
+
+```{r}
+
+
+# données de ref pour filtrer les codes postaux du tableau 
+donnee_poste <- read_csv("data/raw/base-officielle-codes-postaux.csv")
+
+clean_cp <- Info_pecheur %>%
+  mutate(Code_postal = str_extract(Code_postal, "\\d+")) %>% # les codes sont parfois nimp, on garde que ce qui est chiffre 
+  mutate(Code_postal = if_else(str_length(Code_postal) == 4, str_pad(Code_postal, 5, pad = "0"), Code_postal)) # on se dit que toutes les erreurs de 0 manquant au début sont possible, donc pour les chaines de 4, on rajoute un 0. 
+
+# on garde que ce qui se retrouve dans la liste de la poste 
+clean_cp <- clean_cp %>%
+  filter(Code_postal %in% donnee_poste$code_postal)
+
+
+
+# on rajoute les latitudes/longitudes
+
+clean_cp <- clean_cp %>%
+  left_join(donnee_poste %>% select(latitude, longitude, Code_postal = code_postal),by = "Code_postal")
+
+# on veut savoir par code postal cb il y a pour ensuite faire la heatmap
+clean_cp_count <- clean_cp %>%
+  group_by(Code_postal, latitude, longitude) %>%
+  summarise(count = n(), .groups = "drop")
+
+clean_cp_count<- clean_cp_count%>%
+  filter(!is.na(latitude) & !is.na(longitude))
+
+
+leaflet(clean_cp_count) %>%
+  addTiles() %>%
+  addHeatmap(
+    lng = ~longitude,
+    lat = ~latitude,
+    intensity = ~count,
+    blur = 20,
+    radius = 15)
+```
+
