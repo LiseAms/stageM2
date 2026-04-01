@@ -291,7 +291,8 @@ erreur_inf <- data_prise_unique %>%
   filter(
   !is.na(taille_min_zone),
   Taille_MM < taille_min_zone * 0.9,
-  Taille_MM > 0)
+  Taille_MM > 0,
+  Nokill !=1)
   
 
 
@@ -312,7 +313,7 @@ data_coherente <- data_prise_unique %>%
     (Taille_MM <= Taille_max_mm * 1.1 | is.na(Taille_max_mm)) &
     (Poids_g <= Poids_max_g * 1.1 | is.na(Poids_max_g)) &
     # MIN : Taille >= 90% de la taille min (ou pas de règle)
-    (Taille_MM >= taille_min_zone * 0.9 | is.na(taille_min_zone) | Taille_MM ==0)
+    (Taille_MM >= taille_min_zone * 0.9 | is.na(taille_min_zone) | Taille_MM ==0 | Nokill ==1)
   )
 
 # verification pour être sur que toutes les données sont quelque part dans un tableau et pas de doublons 

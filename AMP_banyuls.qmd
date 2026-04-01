@@ -4,8 +4,6 @@ format: html
 editor: visual
 ---
 
-
-
 ## libraries
 
 ```{r}
@@ -23,22 +21,41 @@ library(rfishbase)
 library(leaflet)
 ```
 
-
 # importation des données
+
 ```{r}
 
-pro_data <- read_csv("data/pro/pro_data.csv")
-
-AMP_banyuls<- pro_data %>%
-  filter(ID_ZoneDePeche==7)
-```
-
-# tailles vs taille capture min 
-```{r}
-
-
-
-
+data_Banyuls <- read_csv("data/pro/data_Banyuls.csv")
 
 ```
 
+#tri erreurs / quantification des erreurs 
+
+###engin/technique 
+
+```{r}
+
+```
+
+
+###prises incohérentes
+
+```{r}
+
+erreur_prise_banyuls <- data_Banyuls %>%
+  filter(Nb_de_prises >50)
+
+
+
+```
+
+
+###taille incohérentes
+
+```{r}
+
+
+
+
+
+```

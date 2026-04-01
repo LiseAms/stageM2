@@ -24,7 +24,7 @@ library(rfishbase)
 
 ```{r}
 
-data_raw <- read_delim("data/raw/RapportDesCaptures_19-03-2026_1773912418.csv", 
+data_raw <- read_delim("data/raw/RapportDesCaptures_30-03-2026_1774863878.csv", 
                        delim = ";", escape_double = FALSE, trim_ws = TRUE, 
                        skip = 2)
 ```
@@ -204,44 +204,63 @@ pro_data <- pro_data %>%
 
 ```
 
+```{r}
+
+# ajout des tailles max dans les data 
+sp_taille_poids <- read_excel("data/raw/sp_taille_poids.xlsx")
+
+
+#ajouter les tailles et poids max à pro_data 
+pro_data <- pro_data %>%
+  left_join(sp_taille_poids %>%
+              select(NomScientifique, Taille_max_mm, Poids_max_g) %>%
+              distinct(),
+            by="NomScientifique")
+
+# mettre en numeric les valeurs 
+pro_data <- pro_data %>%
+  mutate(Taille_max_mm= as.numeric(Taille_max_mm), 
+         Poids_max_g= as.numeric(Poids_max_g))
+
+```
 
 
 # CSV par AMP 
 ```{r}
 Banyuls<- pro_data %>%
   filter(ID_ZoneDePeche==7)
-
-write.csv(Banyuls,"data/pro/data_Banyuls.csv" )
+Banyuls <- as.data.frame(Banyuls)
+write.csv(Banyuls,"data/pro/data_Banyuls.csv", row.names = F )
 
 
 PNMGL<- pro_data %>%
   filter(ID_ZoneDePeche==1)
-
-write.csv(PNMGL,"data/pro/data_PNMGL.csv" )
+PNMGL <- as.data.frame(PNMGL)
+write.csv(PNMGL,"data/pro/data_PNMGL.csv",  row.names = F )
 
 
 Calanque<- pro_data %>%
   filter(ID_ZoneDePeche==4)
-
-write.csv(Calanque,"data/pro/data_Calanque.csv" )
+Calanque <- as.data.frame(Calanque)
+write.csv(Calanque,"data/pro/data_Calanque.csv",  row.names = F )
 
 
 cap_corse<- pro_data %>%
   filter(ID_ZoneDePeche==6)
-
-write.csv(cap_corse,"data/pro/data_cap_corse.csv" )
+cap_corse <- as.data.frame(cap_corse)
+write.csv(cap_corse,"data/pro/data_cap_corse.csv",  row.names = F )
 
 
 bonifacio<- pro_data %>%
   filter(ID_ZoneDePeche==5)
-
-write.csv(bonifacio,"data/pro/data_bonifacio.csv" )
+bonifacio <- as.data.frame(bonifacio)
+write.csv(bonifacio,"data/pro/data_bonifacio.csv" ,  row.names = F)
 
 
 hors_amp<- pro_data %>%
   filter(ID_ZoneDePeche==8)
-
-write.csv(hors_amp,"data/pro/hors_amp.csv" )
+hors_amp <- as.data.frame(hors_amp)
+write.csv(hors_amp,"data/pro/hors_amp.csv" ,  row.names = F)
 
 ```
 
@@ -391,8 +410,45 @@ engin <- pro_data%>%
 combinaison_tech_engin <- pro_data%>%
   distinct(Technique, Engin) %>%
   arrange(Technique, Engin)
-```
 
+
+
+
+
+Regles_techniques_engins_referentiels_Validee <- read_excel("data/raw/Regles_techniques_engins_referentiels_Validee.xlsx")
+
+technique <- pro_data%>%
+  distinct(Technique)%>%
+  pull(Technique)
+
+
+engin <- pro_data%>%
+  distinct(Engin)%>%
+  pull(Engin)
+
+combinaison_tech_engin <- pro_data%>%
+  distinct(Technique, Engin) %>%
+  arrange(Technique, Engin)
+
+
+# lignes dans le tableau combinaison 
+
+Regles_techniques_engins_referentiels_Validee_2 <- Regles_techniques_engins_referentiels_Validee%>%
+  mutate(`Engins associés` = str_split(`Engins associés`, " ; "))%>%
+  unnest(`Engins associés`)
+
+
+
+combinaison_tech_engin <- combinaison_tech_engin %>%
+  left_join(Regles_techniques_engins_referentiels_Validee_2 %>%
+            select( Technique, `Engins associés`, ENGF_COD_associe), 
+            by = c("Technique", "Engin" = "Engins associés" ))
+
+write.csv2(combinaison_tech_engin, "data/pro/combinaison_tech_engin.csv", fileEncoding = "Latin1")
+
+
+
+```
 
 
 # Création du csv pro_data
