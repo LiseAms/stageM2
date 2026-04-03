@@ -1,7 +1,5 @@
 Ref <- read_excel("data/raw/Regles_techniques_engins_referentiels_Validee.xlsx")
-
-pro_data<- pro_data%>%
-  filter(annee==2025)
+pro_data <- read_csv("data/pro/pro_data.csv")
 
 Ref <- Ref%>%
   mutate(`Engins associés` = str_split(`Engins associés`, " ; "))%>%
@@ -53,7 +51,13 @@ combinaison_tech_engin <- combinaison_tech_engin %>%
 write.csv2(combinaison_tech_engin, "data/pro/combinaison_tech_engin.csv", fileEncoding = "Latin1")
 
 
+df <- as.data.frame(matrix(nrow = 0, ncol = length(technique)))
+colnames(df) <- make.names(technique, unique = TRUE)
 
+df
+
+
+write.csv2(df, "data/pro/df.csv", fileEncoding = "Latin1")
 
 
 

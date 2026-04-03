@@ -188,6 +188,7 @@ pro_data <- pro_data%>%
 ```
 
 # lignes non complètes pour FAO
+
 ```{r}
 #manquante<- pro_data%>%
 #  filter(!is.na(NomScientifique), is.na(NomFAO) | is.na(CodeFAO)) %>%
@@ -236,8 +237,8 @@ pro_data <- pro_data%>%
 
 ```
 
+# CSV par AMP
 
-# CSV par AMP 
 ```{r}
 Banyuls<- pro_data %>%
   filter(ID_ZoneDePeche==7)
@@ -276,11 +277,10 @@ write.csv(hors_amp,"data/pro/hors_amp.csv" ,  row.names = F)
 
 ```
 
+# tri prise/pêcheur
 
+#### tri PNMGL
 
-# tri prise/pêcheur 
-
-#### tri PNMGL 
 ```{r}
 
 # pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
@@ -306,8 +306,6 @@ PNMGL<- PNMGL%>%
   
 ```
 
-
-
 #### tri Banyuls
 
 ```{r}
@@ -322,8 +320,8 @@ Banyuls<- Banyuls %>%
 
 ```
 
-
 #### tri Calanques
+
 ```{r}
 
 # pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
@@ -338,8 +336,8 @@ Calanque<- Calanque %>%
 
 ```
 
+#### tri capcorse
 
-#### tri capcorse 
 ```{r}
 
 # pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
@@ -355,8 +353,8 @@ cap_corse_chelou <- cap_corse%>%
 
 ```
 
-
 #### tri bonifacio
+
 ```{r}
 
 # pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
@@ -372,7 +370,8 @@ bonifacio_chelou <- bonifacio%>%
 
 ```
 
-# tri dans le pro_data 
+# tri dans le pro_data
+
 ```{r}
 
 pro_data<- pro_data%>%
@@ -407,13 +406,8 @@ pro_data<- pro_data%>%
 
 ```
 
-
 # Création du csv pro_data
 
 ```{r}
 write.csv(pro_data,"data/pro/pro_data.csv" )
 ```
-
-
-
-
