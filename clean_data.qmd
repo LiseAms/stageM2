@@ -195,12 +195,12 @@ pro_data <- pro_data%>%
 #  mutate(NomFAO= NA, CodeFAO= NA)
 
 
-manquante <- read_delim("data/pro/manquante.csv", 
+noms_manquants <- read_delim("data/pro/nom_manquants.csv", 
     delim = ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1"))
 
 
 pro_data <- pro_data %>%
-  left_join(manquante, by = "NomScientifique", suffix = c("", "_new"))
+  left_join(noms_manquants, by = "NomScientifique", suffix = c("", "_new"))
 
 ```
 
@@ -221,6 +221,18 @@ pro_data <- pro_data %>%
 pro_data <- pro_data %>%
   mutate(Taille_max_mm= as.numeric(Taille_max_mm), 
          Poids_max_g= as.numeric(Poids_max_g))
+
+```
+
+```{r}
+# ajout des modes de pêche : bateau, bord ou mixte
+
+technique_mode <- read_delim("data/pro/technique_mode.csv", 
+                                     delim = ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1"))
+
+
+pro_data <- pro_data%>%
+  left_join(technique_mode%>%select(Technique, Type), by= "Technique")
 
 ```
 
@@ -276,7 +288,7 @@ write.csv(hors_amp,"data/pro/hors_amp.csv" ,  row.names = F)
 
 
 PNMGL<- PNMGL%>%
-  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (Nb_de_prises>150 , 1, Nb_de_prises))%>%
   mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises))
 
 
@@ -365,87 +377,32 @@ bonifacio_chelou <- bonifacio%>%
 
 pro_data<- pro_data%>%
   # PNMGL
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & Nb_de_prises>100 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & Nb_de_prises >30 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >30 , 1, Nb_de_prises))%>%
   filter(Id_Prise != "﻿34191") %>%
   
   # banyuls
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & Nb_de_prises>100 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux"  & Nb_de_prises >10 , 1, Nb_de_prises)) %>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >10 , 1, Nb_de_prises)) %>%
   
   #calanques
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & Nb_de_prises>100 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & Nb_de_prises >30 , 1, Nb_de_prises)) %>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >30 , 1, Nb_de_prises)) %>%
   
   #capcorse
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==6 & Nb_de_prises>100 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==6 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
   # plus restrictif ? 
   
   #bonifacio 
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==5 & Nb_de_prises>100 , 1, Nb_de_prises)) %>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==5 & Nb_de_prises>150 , 1, Nb_de_prises)) %>%
   # plus restrictif ?
   
-  filter(Nb_de_pêcheurs < 50 & Nb_de_pêcheurs >= 0) # premier gros tri pour enlever les nb aberrants, mais des fois concours de pêche donc garder un certain nombre
+  mutate(Nb_de_pêcheurs = if_else(ID_ZoneDePeche==4 & (Type== "Bateau" | Type=="Mixte" )& Nb_de_pêcheurs> 5, 1, Nb_de_pêcheurs)) %>%
+  mutate(Nb_de_pêcheurs = if_else (Nb_de_pêcheurs >30 | Nb_de_pêcheurs <= 0, 1, Nb_de_pêcheurs)) # premier gros tri pour enlever les nb aberrants, mais des fois concours de pêche donc garder un certain nombre
 
   
   
   
-
-
-```
-
-
-# tri technique de pêche 
-
-```{r}
-technique <- pro_data%>%
-  distinct(Technique)%>%
-  pull(Technique)
-
-
-engin <- pro_data%>%
-  distinct(Engin)%>%
-  pull(Engin)
-
-combinaison_tech_engin <- pro_data%>%
-  distinct(Technique, Engin) %>%
-  arrange(Technique, Engin)
-
-
-
-
-
-Regles_techniques_engins_referentiels_Validee <- read_excel("data/raw/Regles_techniques_engins_referentiels_Validee.xlsx")
-
-technique <- pro_data%>%
-  distinct(Technique)%>%
-  pull(Technique)
-
-
-engin <- pro_data%>%
-  distinct(Engin)%>%
-  pull(Engin)
-
-combinaison_tech_engin <- pro_data%>%
-  distinct(Technique, Engin) %>%
-  arrange(Technique, Engin)
-
-
-# lignes dans le tableau combinaison 
-
-Regles_techniques_engins_referentiels_Validee_2 <- Regles_techniques_engins_referentiels_Validee%>%
-  mutate(`Engins associés` = str_split(`Engins associés`, " ; "))%>%
-  unnest(`Engins associés`)
-
-
-
-combinaison_tech_engin <- combinaison_tech_engin %>%
-  left_join(Regles_techniques_engins_referentiels_Validee_2 %>%
-            select( Technique, `Engins associés`, ENGF_COD_associe), 
-            by = c("Technique", "Engin" = "Engins associés" ))
-
-write.csv2(combinaison_tech_engin, "data/pro/combinaison_tech_engin.csv", fileEncoding = "Latin1")
-
 
 
 ```
