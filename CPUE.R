@@ -3,32 +3,77 @@
 data_PNMGL <- read_csv("data/pro/data_PNMGL.csv")
 
 data_PNMGL<- data_PNMGL%>%
-  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises)) %>%
-  mutate(Nb_de_pêcheurs = if_else (Nb_de_pêcheurs <50 | Nb_de_pêcheurs >= 0, 1, Nb_de_pêcheurs)) %>%
-  mutate(Durée_de_la_session= replace(Durée_de_la_session, Durée_de_la_session==0, NA))
+  mutate(Nb_de_prises = if_else (Nb_de_prises>150 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon"  & Nb_de_prises >30 , 1, Nb_de_prises)) %>%
+  mutate(Nb_de_pêcheurs = if_else (Nb_de_pêcheurs <50 | Nb_de_pêcheurs >= 0, 1, Nb_de_pêcheurs)) 
 
 
+#engin -> min 30 sortie avec 
+data_PNMGL <- data_PNMGL%>%
+  group_by(Engin)%>%
+  filter(n() >= 30) %>%
+  ungroup()
 
+# CPUE = (nb/pecheur/engin/sortie)/duree sortie) *60 
 
-cpue <- data_PNMGL %>%
-  mutate(CPUE = Poids_g / Durée_de_la_session) %>%
-  group_by(mois) %>%
+data_PNMGL<- data_PNMGL%>%
+  mutate(effort = Durée_de_la_session / Nb_de_pêcheurs) # pour gerer les sorties a plusieurs pecheurs 
+  
+
+cpue_NB<- data_PNMGL%>%
+  group_by(Engin, NomVernaculaire)%>%
   summarise(
-    CPUE_moyenne = mean(CPUE, na.rm = TRUE),
-    .groups = "drop"
+    somme_Nki = sum(Nb_de_prises, na.rm = TRUE),
+    somme_Tki = sum(effort, na.rm = TRUE),
+    CPUE = (somme_Nki / somme_Tki) * 60
+  )
+  
+
+
+cpue_NB<- data_PNMGL%>%
+  group_by(Engin, NomVernaculaire)%>%
+  summarise(
+    somme_Bki = sum(Nb_de_prises, na.rm = TRUE),
+    somme_Tki = sum(effort, na.rm = TRUE),
+    CPUE = (somme_Bki / somme_Tki) * 60
   )
 
-cpue_data <- landings_data %>% 
-  # Add colomn for kilograms by dividing gram column by 1000
-  mutate(Weight_kg = Weight_g / 1000) %>%
-  # Group by year and Trip ID so that you can calculate CPUE for every trip in every year
-  group_by(Year,Trip_ID) %>% 
-  # For each year and trip ID, calculate the CPUE for each trip by dividing the sum of the catch, converted from grams to kilograms, by the trip by the number of fishing hours
-  summarize(Trip_CPUE = sum(Weight_kg) / mean(Effort_Hours)) %>% 
-  # Next, just group by year so we can calculate median CPUE for each year across all trips in the year
-  group_by(Year) %>% 
-  # Calculate median CPUE for each year
-  summarize(Median_CPUE_kg_hour = median(Trip_CPUE))
+
+ggplot(cpue, aes(x = Engin, y = CPUE, fill = NomVernaculaire)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "CPUE par engin et par espèce",
+    x = "Engin",
+    y = "CPUE (g/h)"
+  ) +
+  theme_minimal()
 
 
+
+# pour les espèces top 10 
+espece_top10 <- data_PNMGL %>%
+  group_by(NomScientifique) %>%
+  summarise(total= sum(Nb_de_prises, na.rm=T), .groups = 'drop') %>%
+  arrange(desc(total)) %>%
+  slice_head(n=10)
+
+PNMGL_10 <- data_PNMGL %>%
+  filter(NomScientifique %in% espece_top10$NomScientifique)
+
+
+cpue_NB_10<- PNMGL_10%>%
+  group_by(Engin, NomVernaculaire)%>%
+  summarise(
+    somme_Bki = sum(Nb_de_prises, na.rm = TRUE),
+    somme_Tki = sum(effort, na.rm = TRUE),
+    CPUE = (somme_Bki / somme_Tki) * 60
+  )
+
+ggplot(cpue_NB_10, aes(x = Engin, y = CPUE, fill = NomVernaculaire)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "CPUE par engin et par espèce",
+    x = "Engin",
+    y = "CPUE (nb/h)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))

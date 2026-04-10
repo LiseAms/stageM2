@@ -88,8 +88,8 @@ tableau_erreurs <- data.frame(
 erreurs_nb <- function(data, nom_amp) {
   list(
     prises = data %>%
-      filter((NomVernaculaire %in% c("Maquereau commun", "Sardine commune", "Maquereau espagnol") & Nb_de_prises > 100) |
-               (!NomVernaculaire %in% c("Maquereau commun", "Sardine commune", "Maquereau espagnol") & Nb_de_prises > 30)),
+      filter((NomVernaculaire %in% c("Maquereau commun", "Sardine commune", "Maquereau espagnol", "Girelle","Girelle paon") & Nb_de_prises > 100) |
+               (!NomVernaculaire %in% c("Maquereau commun", "Sardine commune", "Maquereau espagnol", "Girelle","Girelle paon") & Nb_de_prises > 30)),
     
     pecheurs = data %>%
       filter(Nb_de_pêcheurs < 0 | Nb_de_pêcheurs > 50)
@@ -252,6 +252,21 @@ print(tableau_erreurs)
 
 
 # correlation niveau reglementation 
+
+reglementation <- read_excel("data/pro/reglementation.xlsx")
+
+
+
+tableau_erreurs <- tableau_erreurs%>%
+  left_join(reglementation)
+
+
+table_anova <- tableau_erreurs%>%
+  select(AMP, Total, Reglementation)
+
+
+anova <- aov(Total ~ Reglementation, data = table_anova)
+summary(anova)
 
 
 

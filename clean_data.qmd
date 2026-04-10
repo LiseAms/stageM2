@@ -24,9 +24,11 @@ library(rfishbase)
 
 ```{r}
 
-data_raw <- read_delim("data/raw/RapportDesCaptures_30-03-2026_1774863878.csv", 
+data_raw <- read_delim("data/raw/RapportDesCaptures_08-04-2026_1775654895.csv", 
                        delim = ";", escape_double = FALSE, trim_ws = TRUE, 
                        skip = 2)
+
+
 ```
 
 ## description des colonnes
@@ -155,7 +157,10 @@ Nom SousZoneDePeche : nom de la sous-zone de l'AMP
 
 pro_data<- data_raw %>% 
   rename(Taille_MM=`Taille (mm)`, Poids_g=`Poids (g)`) %>%
-  filter( `Heure debut session`>= as.POSIXct("2024-02-01 00:00:00") )
+  filter( `Heure debut session`>= as.POSIXct("2025-01-01 00:00:00") )
+
+
+
 ```
 
 ### ajout de colonnes dates et formatage colonnes
@@ -166,13 +171,16 @@ colnames(pro_data) <- gsub(" ","_", colnames(pro_data))
 
 #rajouter colonnes année; mois et jour pour plus de simplicité par la suite
 pro_data <- pro_data %>%
-  filter(!is.na(Horodate)) %>%
+  filter(!is.na(Heure_debut_session)) %>%
   mutate(
-    jour_semaine = wday(Horodate, label = TRUE,abbr = FALSE, week_start = 1),  # Lun-Dim
-    mois = month(Horodate, label = T, abbr = F),
-    annee = year(Horodate)
+    jour_semaine = wday(Heure_debut_session, label = TRUE,abbr = FALSE, week_start = 1),  # Lun-Dim
+    mois = month(Heure_debut_session, label = T, abbr = F),
+    annee = year(Heure_debut_session)
   )
 
+pro_data <- pro_data %>%
+  mutate(Durée_de_la_session= replace(Durée_de_la_session, Durée_de_la_session==0, NA))%>%
+  mutate(Nokill= ifelse(is.na(Nokill), 0, Nokill))
 
 ```
 
@@ -181,20 +189,18 @@ pro_data <- pro_data %>%
 ### Lieu de pêche = -1
 
 ```{r}
-# 2 lignes sont concernées, on enlève car probablement une saisie erreur 
+
+
+# on affecte a hors AMP pour ne pas perdre les données mais pas associer à une AMP aléatoire : je comprends pas comment c'est possible 
+
 pro_data <- pro_data%>%
-  filter(ID_ZoneDePeche != -1)
+  mutate(ID_ZoneDePeche_correction = ifelse(ID_ZoneDePeche==-1, 8, ID_ZoneDePeche))
 
 ```
 
 # lignes non complètes pour FAO
 
 ```{r}
-#manquante<- pro_data%>%
-#  filter(!is.na(NomScientifique), is.na(NomFAO) | is.na(CodeFAO)) %>%
-#  distinct(NomScientifique)%>%
-#  mutate(NomFAO= NA, CodeFAO= NA)
-
 
 noms_manquants <- read_delim("data/pro/nom_manquants.csv", 
     delim = ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1"))
@@ -241,37 +247,37 @@ pro_data <- pro_data%>%
 
 ```{r}
 Banyuls<- pro_data %>%
-  filter(ID_ZoneDePeche==7)
+  filter(ID_ZoneDePeche_correction==7)
 Banyuls <- as.data.frame(Banyuls)
 write.csv(Banyuls,"data/pro/data_Banyuls.csv", row.names = F )
 
 
 PNMGL<- pro_data %>%
-  filter(ID_ZoneDePeche==1)
+  filter(ID_ZoneDePeche_correction==1)
 PNMGL <- as.data.frame(PNMGL)
 write.csv(PNMGL,"data/pro/data_PNMGL.csv",  row.names = F )
 
 
 Calanque<- pro_data %>%
-  filter(ID_ZoneDePeche==4)
+  filter(ID_ZoneDePeche_correction==4)
 Calanque <- as.data.frame(Calanque)
 write.csv(Calanque,"data/pro/data_Calanque.csv",  row.names = F )
 
 
 cap_corse<- pro_data %>%
-  filter(ID_ZoneDePeche==6)
+  filter(ID_ZoneDePeche_correction==6)
 cap_corse <- as.data.frame(cap_corse)
 write.csv(cap_corse,"data/pro/data_cap_corse.csv",  row.names = F )
 
 
 bonifacio<- pro_data %>%
-  filter(ID_ZoneDePeche==5)
+  filter(ID_ZoneDePeche_correction==5)
 bonifacio <- as.data.frame(bonifacio)
 write.csv(bonifacio,"data/pro/data_bonifacio.csv" ,  row.names = F)
 
 
 hors_amp<- pro_data %>%
-  filter(ID_ZoneDePeche==8)
+  filter(ID_ZoneDePeche_correction==8)
 hors_amp <- as.data.frame(hors_amp)
 write.csv(hors_amp,"data/pro/hors_amp.csv" ,  row.names = F)
 
@@ -390,11 +396,13 @@ pro_data<- pro_data%>%
   
   #capcorse
   mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==6 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
-  # plus restrictif ? 
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >10 , 1, Nb_de_prises)) %>%
+
   
   #bonifacio 
   mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==5 & Nb_de_prises>150 , 1, Nb_de_prises)) %>%
-  # plus restrictif ?
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >10 , 1, Nb_de_prises)) %>%
+  
   
   mutate(Nb_de_pêcheurs = if_else(ID_ZoneDePeche==4 & (Type== "Bateau" | Type=="Mixte" )& Nb_de_pêcheurs> 5, 1, Nb_de_pêcheurs)) %>%
   mutate(Nb_de_pêcheurs = if_else (Nb_de_pêcheurs >30 | Nb_de_pêcheurs <= 0, 1, Nb_de_pêcheurs)) # premier gros tri pour enlever les nb aberrants, mais des fois concours de pêche donc garder un certain nombre

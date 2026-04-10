@@ -87,61 +87,35 @@ ggplot(prop_jours_semaine, aes(x = jour_semaine, y = prop, fill = jour_semaine))
 
 
 
-# 2. PROPORTION par JOUR DU MOIS (1-31)
+# 2. PROPORTION par mois
+
 ordre_mois <- c("janvier", "février", "mars", "avril", "mai", "juin",
                 "juillet", "août", "septembre", "octobre", "novembre", "décembre")
 
-
 nb_mois <- pro_data %>%
-  count(annee, mois, name = "nb_prises")
-
-nb_mois <- nb_mois %>%
-  mutate(mois = factor(mois, levels = ordre_mois))
+  mutate(mois = factor(mois, levels = ordre_mois)) %>%
+  group_by(annee, mois) %>%
+  summarise(nb_prises = sum(Nb_de_prises, na.rm = TRUE), .groups = "drop") %>%
+  arrange(annee, mois)
 
 ggplot(nb_mois, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
   geom_line(linewidth = 1.5, alpha = 0.8) +
   geom_point(size = 3,alpha=0.9)+
   geom_text(aes(label = nb_prises), 
-            vjust= -1,size = 3) +
+            vjust= -1.5,size = 3) +
+  scale_y_continuous(limits= c(0,5500), breaks = seq(0,7000, by=500))+
   labs(title = "Nombre de prises de pêche par mois",
        subtitle = paste("Total:", sum(pro_data$Nb_de_prises), "prises"),
-       x = "Mois", y = "Nombre de prises") +
+       x = "Mois", y = "Nombre de prises", 
+       color= "Année") +
   theme_minimal() +
   theme(plot.title = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text())
-
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "right")
 
 ```
 
 Il y a plus de déclaration le lundi (proche de la % du dimanche). Sans surprise, il y a plus de déclaration à la fin de l'année car c'est le moment où il faut rendre les captures de l'année. Sans prendre en compte ce pic, c'est en août qu'il y a le plus de captures déclarées.
-
-# Nombre de captures total
-
-```{r}
-# en sachant qu'on a elenvé les prises > 10 car parait étrange (chiffre à revoir, a affiner selon l'espèce ?)
-capture_total <- sum(pro_data$Nb_de_prises, na.rm = T)
-
-#évolution des captures dans le temps 
-total_tps <- pro_data %>%
-  count(annee, mois, name = "nb_prises")
-
-total_tps <- total_tps %>%
-  mutate(mois = factor(mois, levels = ordre_mois))
-
-
-ggplot(total_tps, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
-  geom_line(linewidth = 1.5, alpha = 0.8) +
-  geom_point(size = 3,alpha=0.9)+
-  geom_text(aes(label = nb_prises), 
-            vjust= -1,size = 3) +
-  labs(title = "Évolution du nombre de prises de pêche par mois",
-       subtitle = paste("Total:", sum(pro_data$Nb_de_prises), "prises"),
-       x = "Mois", y = "Nombre de prises") +
-  theme_minimal() +
-  theme(plot.title = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text())
-
-```
 
 En tout, depuis le 1er février 2024, il y a eu `{r} capture_total` captures renseignées sur Catchmachine.
 
@@ -166,25 +140,27 @@ L'AMP du golfe du lion comptabilise `{r} capture_totale_PNMGL` captures.
 
 ```{r}
 #évolution des captures dans le temps 
-PNMGL_tps <- captures_PNMGL %>%
-  count(annee, mois, name = "nb_prises")
 
-PNMGL_tps <- PNMGL_tps %>%
-  mutate(mois = factor(mois, levels = ordre_mois))
+nb_mois <- captures_PNMGL %>%
+  mutate(mois = factor(mois, levels = ordre_mois)) %>%
+  group_by(annee, mois) %>%
+  summarise(nb_prises = sum(Nb_de_prises, na.rm = TRUE), .groups = "drop") %>%
+  arrange(annee, mois)
 
-
-ggplot(PNMGL_tps, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
+ggplot(nb_mois, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
   geom_line(linewidth = 1.5, alpha = 0.8) +
   geom_point(size = 3,alpha=0.9)+
   geom_text(aes(label = nb_prises), 
-            vjust= -1,size = 3) +
-  labs(title = "Évolution du nombre de prises de pêche par mois dans le PNMGL",
+            vjust= -1.5,size = 3) +
+  scale_y_continuous(limits= c(0,2000), breaks = seq(0,7000, by=500))+
+  labs(title = "Nombre de prises de pêche par mois PNMGL",
        subtitle = paste("Total:", sum(captures_PNMGL$Nb_de_prises), "prises"),
-       x = "Mois", y = "Nombre de prises") +
+       x = "Mois", y = "Nombre de prises", 
+       color= "Année") +
   theme_minimal() +
   theme(plot.title = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text())
-
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "right")
 
 ```
 
@@ -198,33 +174,28 @@ captures_calanque <- pro_data %>%
   filter(ID_ZoneDePeche==4)
 
 
-capture_totale_calanque<- sum(captures_calanque$Nb_de_prises, na.rm = T)
-
-```
-
-L'AMP des calanques comptabilise `{r} capture_totale_calanque` captures.
-
-```{r}
-
 #évolution des captures dans le temps 
-calanque_tps <- captures_calanque %>%
-  count(annee, mois, name = "nb_prises")
 
+nb_mois <- captures_calanque %>%
+  mutate(mois = factor(mois, levels = ordre_mois)) %>%
+  group_by(annee, mois) %>%
+  summarise(nb_prises = sum(Nb_de_prises, na.rm = TRUE), .groups = "drop") %>%
+  arrange(annee, mois)
 
-calanque_tps <- calanque_tps %>%
-  mutate(mois = factor(mois, levels = ordre_mois))
-
-ggplot(calanque_tps, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
+ggplot(nb_mois, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
   geom_line(linewidth = 1.5, alpha = 0.8) +
   geom_point(size = 3,alpha=0.9)+
   geom_text(aes(label = nb_prises), 
-            vjust= -1,size = 3) +
-  labs(title = "Évolution du nombre de prises de pêche par mois dans l'AMP calanque",
+            vjust= -1.5,size = 3) +
+  scale_y_continuous(limits= c(0,4000), breaks = seq(0,7000, by=500))+
+  labs(title = "Nombre de prises de pêche par mois Calanques",
        subtitle = paste("Total:", sum(captures_calanque$Nb_de_prises), "prises"),
-       x = "Mois", y = "Nombre de prises") +
+       x = "Mois", y = "Nombre de prises", 
+       color= "Année") +
   theme_minimal() +
   theme(plot.title = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text())
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "right")
 ```
 
 Peut être que l'erreur de capture_totale vient d'ici
@@ -314,38 +285,32 @@ Gros manque de données également
 
 ```{r}
 
-
 captures_banyuls <- pro_data %>%
   filter(ID_ZoneDePeche==7)
 
 
-capture_totale_banyuls<- sum(captures_banyuls$Nb_de_prises, na.rm = T)
-
-
-```
-
-L'AMP de cerbère banyuls comptabilise `{r} capture_totale_banyuls` captures.
-
-```{r}
 #évolution des captures dans le temps 
-banyuls_tps <- captures_banyuls %>%
-  count(annee, mois, name = "nb_prises")
 
-banyuls_tps <- banyuls_tps %>%
-  mutate(mois = factor(mois, levels = ordre_mois))
+nb_mois <- captures_banyuls %>%
+  mutate(mois = factor(mois, levels = ordre_mois)) %>%
+  group_by(annee, mois) %>%
+  summarise(nb_prises = sum(Nb_de_prises, na.rm = TRUE), .groups = "drop") %>%
+  arrange(annee, mois)
 
-ggplot(banyuls_tps, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
+ggplot(nb_mois, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
   geom_line(linewidth = 1.5, alpha = 0.8) +
   geom_point(size = 3,alpha=0.9)+
   geom_text(aes(label = nb_prises), 
-            vjust= -1,size = 3) +
-  labs(title = "Évolution du nombre de prises de pêche par mois dans l'AMP Cerbère-banyuls",
+            vjust= -1.5,size = 3) +
+  scale_y_continuous(limits= c(0,1000), breaks = seq(0,1000, by=250))+
+  labs(title = "Nombre de prises de pêche par mois Cerbère-Banyuls",
        subtitle = paste("Total:", sum(captures_banyuls$Nb_de_prises), "prises"),
-       x = "Mois", y = "Nombre de prises") +
+       x = "Mois", y = "Nombre de prises", 
+       color= "Année") +
   theme_minimal() +
   theme(plot.title = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text())
-
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "right")
 
 
 ```
@@ -399,7 +364,7 @@ ggplot(autre_tps, aes(x = mois, y = nb_prises, color = factor(annee), group = an
 ```{r}
 
 espece_peche <- pro_data %>%
-  group_by(CodeFAO) %>%
+  group_by(NomScientifique) %>%
   summarise(total= sum(Nb_de_prises, na.rm=T), .groups = 'drop') %>%
   arrange(desc(total)) 
  
@@ -407,7 +372,7 @@ espece_peche <- espece_peche %>%
   left_join(pro_data %>%
               select(CodeFAO, NomVernaculaire, NomScientifique)%>%
               distinct(),
-            by= "CodeFAO") %>%
+            by= "NomScientifique") %>%
   arrange(desc(total))
 
 
@@ -421,7 +386,7 @@ Il y a `{r} nb_sp` espèces différentes pêchées dans toutes les AMP confondue
 ```{r}
 
 espece_top10 <- pro_data %>%
-  group_by(CodeFAO) %>%
+  group_by(NomScientifique) %>%
   summarise(total= sum(Nb_de_prises, na.rm=T), .groups = 'drop') %>%
   arrange(desc(total)) %>%
   slice_head(n=10)
@@ -430,12 +395,71 @@ espece_top10 <- espece_top10 %>%
   left_join(pro_data %>%
               select(CodeFAO, NomVernaculaire, NomScientifique)%>%
               distinct(),
-            by= "CodeFAO") %>%
+            by= "NomScientifique") %>%
   arrange(desc(total))
 
 espece_top10
 
 ```
+
+# espèces top 10 par AMP 
+
+```{r}
+
+espece_top10_PNMGL <- pro_data %>%
+  filter(ID_ZoneDePeche==1)%>%
+  group_by(NomScientifique) %>%
+  summarise(total= sum(Nb_de_prises, na.rm=T), .groups = 'drop') %>%
+  arrange(desc(total)) %>%
+  slice_head(n=10)
+
+espece_top10_PNMGL <- espece_top10_PNMGL %>%
+  left_join(pro_data %>%
+              select(CodeFAO, NomVernaculaire, NomScientifique)%>%
+              distinct(),
+            by= "NomScientifique") %>%
+  arrange(desc(total))
+
+espece_top10_PNMGL
+
+
+espece_top10_CB <- pro_data %>%
+  filter(ID_ZoneDePeche==7)%>%
+  group_by(NomScientifique) %>%
+  summarise(total= sum(Nb_de_prises, na.rm=T), .groups = 'drop') %>%
+  arrange(desc(total)) %>%
+  slice_head(n=10)
+
+espece_top10_CB <- espece_top10_CB %>%
+  left_join(pro_data %>%
+              select(CodeFAO, NomVernaculaire, NomScientifique)%>%
+              distinct(),
+            by= "NomScientifique") %>%
+  arrange(desc(total))
+
+espece_top10_CB
+
+
+
+espece_top10_Calanques <- pro_data %>%
+  filter(ID_ZoneDePeche==4)%>%
+  group_by(NomScientifique) %>%
+  summarise(total= sum(Nb_de_prises, na.rm=T), .groups = 'drop') %>%
+  arrange(desc(total)) %>%
+  slice_head(n=10)
+
+espece_top10_Calanques <- espece_top10_Calanques %>%
+  left_join(pro_data %>%
+              select(CodeFAO, NomVernaculaire, NomScientifique)%>%
+              distinct(),
+            by= "NomScientifique") %>%
+  arrange(desc(total))
+
+espece_top10_Calanques
+
+
+```
+
 
 # sorties bredouilles
 
@@ -461,8 +485,9 @@ bredouille_AMP <- bredouille %>%
 ggplot(bredouille_AMP, aes(x = Nom_ZoneDePeche, y = n, fill = n)) +
   geom_col(width = 0.7, alpha = 0.8) +
   geom_text(aes(label = n), vjust = -0.3, fontface = "bold", size = 4) +
+  scale_y_continuous(limits = c(0, 1200), breaks = seq(0,1200, by=200))+
   labs(title = "Nombre de sortie bredouille par AMP",
-       subtitle = paste("Total:", sum(bredouille_AMP$n), "prises"),
+       subtitle = paste("Total:", sum(bredouille_AMP$n), "sorties bredouilles"),
        x = "AMP", y = "Nombre") +
   scale_x_discrete(labels = function(x) str_wrap(x, width = 25)) +
   theme_minimal() +

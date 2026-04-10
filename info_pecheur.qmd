@@ -27,14 +27,59 @@ Info_pecheur<- read_delim("data/raw/EnqueteInformationSurlePecheur_30-03-2026_17
 
 colnames(Info_pecheur) <- gsub(" ","_", colnames(Info_pecheur))
 
+Info_pecheur <- Info_pecheur %>%
+  mutate(
+    Date_de_mise_à_jour = dmy_hms(Date_de_mise_à_jour),
+    annee_MAJ = year(Date_de_mise_à_jour)
+  )
+
+Info_pecheur <- Info_pecheur %>%
+  mutate(Id_Pêcheur = str_extract(Id_Pêcheur, "\\d+")) %>%
+  mutate(Id_Pêcheur = as.numeric(Id_Pêcheur))
+
+
+Info_pecheur<- Info_pecheur%>%
+  mutate(Id_Pêcheur= as.numeric(Id_Pêcheur))
 ```
 
-# Age 
+
+
+# join des 2 data 
+
+```{r}
+info_pech_join_data <- pro_data%>%
+  left_join(Info_pecheur, by= c("Id_Abonné"="Id_Pêcheur" ))
+```
+
+
+# nombre de pêcheurs
+```{r}
+nb_pecheur <- info_pech_join_data%>%
+  group_by(Nom_ZoneDePeche)%>%
+  summarise(nb_pecheur = n_distinct(Id_Abonné), .groups = "drop")
+
+
+
+
+```
+
+
+
+# mode de pêche
+
+```{r}
+effectif_mode <- Info_pecheur%>%
+  count(Mode_de_pêche)
+
+```
+
+# Age
+
 ```{r}
 
 
 Info_pecheur<- Info_pecheur %>%
-  mutate(Age = if_else (Age>1930 & Age<2024 , 2026 - Age, Age))%>%
+  mutate(Age = if_else (Age>1930 & Age<annee_MAJ , annee_MAJ - Age, Age))%>%
   mutate(Age = if_else (Age> 100, NA, Age))
 
 ggplot(data=Info_pecheur) +
@@ -42,7 +87,8 @@ ggplot(data=Info_pecheur) +
 	theme_bw()
 ```
 
-# nb sortie par an 
+# nb sortie par an
+
 ```{r}
 ordre_prises <- c("1 sortie", "2 à 3 sorties", "4 à 10", "11 à 15", "16 à 30", "31 à 50",
                 "Plus de 50", NA)
@@ -66,7 +112,8 @@ ggplot(Info_pecheur, aes(x = Nombre_sortie_par_an)) +
   theme_bw()
 
 ```
-# études 
+
+# études
 
 ```{r}
 
@@ -76,7 +123,9 @@ ggplot(data=Info_pecheur) +
 
 
 ```
-# professions différentes 
+
+# professions différentes
+
 ```{r}
 
 espece_peche <- pro_data %>%
@@ -93,7 +142,8 @@ espece_peche <- espece_peche %>%
 
 ```
 
-# heatmap region 
+# heatmap region
+
 ```{r}
 
 fr_regions <- gisco_get_nuts(country = "FR", nuts_level = 1)
@@ -132,7 +182,7 @@ ggplot(heat_map_region) +
 
 ```
 
-# heatmap code postal 
+# heatmap code postal
 
 ```{r}
 
@@ -172,5 +222,17 @@ leaflet(clean_cp_count) %>%
     intensity = ~count,
     blur = 20,
     radius = 15)
+```
+
+
+
+
+
+
+# analyse 
+```{r}
+XP_capture<- info_pech_join_data%>%
+  group_by(Nombre_sortie_par_an)%>%
+  
 ```
 
