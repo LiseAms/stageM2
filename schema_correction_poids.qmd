@@ -1,0 +1,82 @@
+---
+title: "Schéma correction des poids"
+format: html
+mermaid:
+  theme: forest
+---
+
+# Diagramme de décision
+
+```{mermaid}
+flowchart TD
+
+    A[Import pro_data.csv] --> B[Préparation des références poids-taille]
+
+    B --> B1[SIH : a_SIH / b_SIH]
+    B --> B2[FishBase : a_FB / b_FB]
+    B --> B3[ObsBio : a_obs / b_obs]
+
+    B1 --> C[Jointure avec pro_data]
+    B2 --> C
+    B3 --> C
+
+    C --> D[Calcul des poids théoriques]
+
+    D --> D1[Poids_theorique_SIH]
+    D --> D2[Poids_theorique_FB]
+    D --> D3[Poids_theorique_ObsBio]
+
+    D1 --> E[Évaluation robustesse ObsBio]
+    D2 --> E
+    D3 --> E
+
+    E --> E1[Calcul plage de tailles]
+    E --> E2[Calcul nb individus requis]
+    E --> E3[Définition ratio_robuste]
+
+    E3 --> F{Combien de poids théoriques disponibles ?}
+
+    F -->|1 seul| G[Conserver ce poids]
+    F -->|Plusieurs| H{ObsBio valide ?}
+
+    H -->|origine = med\nET taille dans plage\nET ratio robuste| I[Choisir ObsBio]
+    H -->|Sinon| J{FishBase disponible ?}
+
+    J -->|Oui| K[Choisir FishBase]
+    J -->|Non| L[Choisir SIH]
+
+    G --> M[Définir poids_theo_ref]
+    I --> M
+    K --> M
+    L --> M
+
+    M --> N[Comparer poids observé vs théorique]
+
+    N --> N1[ratio_si_total]
+    N --> N2[ratio_si_moyenne]
+
+    N1 --> O{Diagnostic}
+    N2 --> O
+
+    O -->|Taille aberrante| P[Conserver poids observé]
+    O -->|Pas de capture| Q[Poids final = NA]
+    O -->|Poids absent| R[Utiliser poids théorique]
+    O -->|Poids cohérent| S[Conserver poids observé]
+    O -->|Poids total des prises| T[Diviser par Nb_de_prises]
+    O -->|Poids aberrant| U[Remplacer par poids théorique]
+
+    P --> V[Contrôle final]
+    Q --> V
+    R --> V
+    S --> V
+    T --> V
+    U --> V
+
+    V --> W{Poids > 1 tonne ?}
+
+    W -->|Oui| X[Mettre NA + diagnostic aberrant]
+    W -->|Non| Y[Conserver poids_final]
+
+    X --> Z[Export data_poids_corrige.csv]
+    Y --> Z
+```
