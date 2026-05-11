@@ -79,4 +79,11 @@ flowchart TD
 
     X --> Z[Export data_poids_corrige.csv]
     Y --> Z
+
+classDef source   fill:#E1F5EE,stroke:#0F6E56,color:#085041,stroke-width:1.5px
+classDef calcul   fill:#EEEDFE,stroke:#534AB7,color:#3C3489,stroke-width:1.5px
+classDef decision fill:#FAEEDA,stroke:#854F0B,color:#412402,stroke-width:1.5px
+classDef resultat fill:#EAF3DE,stroke:#3B6D11,color:#27500A,stroke-width:1.5px
+classDef final    fill:#E6F1FB,stroke:#185FA5,color:#0C447C,stroke-width:1.5px
+classDef ko       fill:#FCEBEB,stroke:#A32D2D,color:#501313,stroke-width:1.5px
 ```
