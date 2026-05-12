@@ -1,89 +1,235 @@
 ---
 title: "Schéma correction des poids"
-format: html
-mermaid:
-  theme: forest
+format:
+  html: 
+    fig-format: png
 ---
 
-# Diagramme de décision
+```{dot}
+digraph correction_poids {
 
-```{mermaid}
-flowchart TD
+  graph [
+    rankdir=TB,
+    splines=ortho,
+    nodesep=0.5,
+    ranksep=0.8,
+    pad=0.2
+  ]
 
-    A[Import pro_data.csv] --> B[Préparation des références poids-taille]
+  node [
+    shape=box,
+    style="rounded,filled",
+    fillcolor= "#EAF3DE",
+    fontname="Helvetica",
+    fontsize=11,
+    color="#444444"
+  ]
 
-    B --> B1[SIH : a_SIH / b_SIH]
-    B --> B2[FishBase : a_FB / b_FB]
-    B --> B3[ObsBio : a_obs / b_obs]
+  edge [
+    fontname="Helvetica",
+    fontsize=10,
+    color="#666666"
+  ]
 
-    B1 --> C[Jointure avec pro_data]
-    B2 --> C
-    B3 --> C
+  ## =========================
+  ## Couleurs ?
+  ## =========================
 
-    C --> D[Calcul des poids théoriques]
+  ## source   = bleu "#B5D4F4"
+  ## calcul   = violet "#CECBF6"
+  ## decision = orange "#FAC775"
+  ## resultat = vert "#C0DD97"
+  ## final    = turquoise "#9FE1CB"
+  ## probleme = rouge "#F7C1C1"
+  ## neutre = "#E1F5EE"
 
-    D --> D1[Poids_theorique_SIH]
-    D --> D2[Poids_theorique_FB]
-    D --> D3[Poids_theorique_ObsBio]
 
-    D1 --> E[Évaluation robustesse ObsBio]
-    D2 --> E
-    D3 --> E
+  A  [label="Import pro_data.csv"]
 
-    E --> E1[Calcul plage de tailles]
-    E --> E2[Calcul nb individus requis]
-    E --> E3[Définition ratio_robuste]
+  B  [label="Préparation des références\npoids-taille"]
 
-    E3 --> F{Combien de poids théoriques disponibles ?}
+  B1 [label="SIH : a_SIH, b_SIH,\norigine des données"]
 
-    F -->|1 seul| G[Conserver ce poids]
-    F -->|Plusieurs| H{ObsBio valide ?}
+  B2 [label="FishBase : a_FB, b_FB,\norigine des données"]
 
-    H -->|origine = med\nET taille dans plage\nET ratio robuste| I[Choisir ObsBio]
-    H -->|Sinon| J{FishBase disponible ?}
+  B3 [label="ObsBio : a_obs, b_obs,\norigine des données"]
 
-    J -->|Oui| K[Choisir FishBase]
-    J -->|Non| L[Choisir SIH]
+  C  [label="Jointure avec pro_data"]
 
-    G --> M[Définir poids_theo_ref]
-    I --> M
-    K --> M
-    L --> M
+  D  [label="Calcul des poids théoriques"]
 
-    M --> N[Comparer poids observé vs théorique]
+  D1 [label="Poids théorique SIH"]
 
-    N --> N1[ratio_si_total]
-    N --> N2[ratio_si_moyenne]
+  D2 [label="Poids théorique FishBase"]
 
-    N1 --> O{Diagnostic}
-    N2 --> O
+  D3 [label="Poids théorique ObsBio"]
 
-    O -->|Taille aberrante| P[Conserver poids observé]
-    O -->|Pas de capture| Q[Poids final = NA]
-    O -->|Poids absent| R[Utiliser poids théorique]
-    O -->|Poids cohérent| S[Conserver poids observé]
-    O -->|Poids total des prises| T[Diviser par Nb_de_prises]
-    O -->|Poids aberrant| U[Remplacer par poids théorique]
+  E  [label="Évaluation robustesse ObsBio"]
 
-    P --> V[Contrôle final]
-    Q --> V
-    R --> V
-    S --> V
-    T --> V
-    U --> V
+  E1 [label="Calcul plage de tailles\nmin -> max"]
 
-    V --> W{Poids > 1 tonne ?}
+  E2 [label="Calcul nb individus requis :\n3 × nb classes de tailles"]
 
-    W -->|Oui| X[Mettre NA + diagnostic aberrant]
-    W -->|Non| Y[Conserver poids_final]
+  E3 [label="Robuste\nOui / non"]
 
-    X --> Z[Export data_poids_corrige.csv]
-    Y --> Z
+  E4 [label="Poids théorique ObsBio\navec diag"]
 
-classDef source   fill:#E1F5EE,stroke:#0F6E56,color:#085041,stroke-width:1.5px
-classDef calcul   fill:#EEEDFE,stroke:#534AB7,color:#3C3489,stroke-width:1.5px
-classDef decision fill:#FAEEDA,stroke:#854F0B,color:#412402,stroke-width:1.5px
-classDef resultat fill:#EAF3DE,stroke:#3B6D11,color:#27500A,stroke-width:1.5px
-classDef final    fill:#E6F1FB,stroke:#185FA5,color:#0C447C,stroke-width:1.5px
-classDef ko       fill:#FCEBEB,stroke:#A32D2D,color:#501313,stroke-width:1.5px
+  F  [shape=diamond,
+      label="Combien de poids\nthéoriques disponibles ?"]
+
+  G  [label="Conserver ce poids"]
+
+  G1 [shape=diamond,
+      label="nb d'origine Med"]
+
+  H  [shape=diamond,
+      label="ObsBio valide ?"]
+
+  I  [label="Choisir ObsBio"]
+
+  J  [shape=diamond,
+      label="FishBase disponible ?"]
+
+  K  [label="Choisir FishBase"]
+
+  L  [label="Choisir SIH"]
+
+  M  [label="1 poids théorique\nréférence"]
+
+  N  [label="Comparer poids observé\nvs théorique"]
+
+  N1 [label="impossible"]
+
+  Q1 [label="0 prise"]
+
+  Q2 [label="pas de taille"]
+
+  Q3 [label="Poids final = NA"]
+
+  N2 [label="1 prise"]
+
+  N3 [label="prise > 1"]
+
+  O  [shape=diamond,
+      label="Poids obs =\npoids théo ± 50%"]
+
+  O1 [label="Conserver poids observé"]
+
+  O2 [label="Utiliser poids théorique"]
+
+  P  [shape=diamond,
+      label="Poids obs =\n(poids théo ± 50%) × nb prise"]
+
+  P1 [label="Utiliser poids théorique"]
+
+  P2 [label="Conserver\n(poids observé / nb prise)"]
+
+  R  [shape=diamond,
+      label="Poids obs =\npoids théo ± 50%"]
+
+  R1 [label="Utiliser poids théorique"]
+
+  R2 [label="Conserver poids observé"]
+
+  V  [label="Contrôle final"]
+
+  W  [shape=diamond,
+      label="Poids > 1 tonne ?"]
+
+  X  [label="Poids = NA +\ndiagnostic aberrant"]
+
+  Y  [label="Conserver poids final"]
+
+  Z  [label="Export data_poids_corrige.csv"]
+
+  ## =========================
+  ## Flux principal
+  ## =========================
+
+  A  -> C
+
+  B  -> B1
+  B  -> B2
+  B  -> B3
+
+  B1 -> C
+  B2 -> C
+  B3 -> C
+
+  C  -> D
+
+  D  -> D1
+  D  -> D2
+  D  -> D3
+
+  D1 -> F  
+  D2 -> F 
+  D3 -> E
+
+  E  -> E1
+  E  -> E2
+  E1  -> E3
+  E2  -> E3
+
+  E3 -> E4
+  E4 -> F
+
+  F  -> G [label="1 seul"]
+  F  -> G1 [label="Plusieurs"]
+  
+  G1 -> G [label="1seul"]
+  G1 -> H [label="Plusieurs"]
+
+  H  -> I [label="Oui"]
+  H  -> J [label="Non"]
+
+  J  -> K [label="Oui"]
+  J  -> L [label="Non"]
+
+  G  -> M
+  I  -> M
+  K  -> M
+  L  -> M
+
+  M  -> N
+
+  N  -> N1
+  N  -> N2
+  N  -> N3
+
+  N1 -> Q1 [label="pas de captures"]
+  N1-> Q2 [label="Pas de taille"]
+  
+  Q1 -> Q3
+  Q2 -> Q3
+  
+  N2 -> O
+  O  -> O1 [label="Oui/nPoids obs OK"]
+  O  -> O2 [label="Non/nPoids obs aberrant"]
+  
+  N3 -> P
+  P  -> P1 [label="Non\nPoids obs aberrant"]
+  P  -> P2 [label="Oui\nPoids obs total"]
+  
+  N3 -> R
+  R  -> R1 [label="Non\nPoids obs aberrant"]
+  R  -> R2 [label="Oui\nPoids obs moyen"]
+
+
+  O1  -> V
+  O2  -> V
+  R1  -> V
+  R2  -> V
+  P1  -> V
+  P2  -> V
+
+  V  -> W
+
+  W  -> X [label="Oui"]
+  W  -> Y [label="Non"]
+
+  X  -> Z
+  Y  -> Z
+}
 ```
+
