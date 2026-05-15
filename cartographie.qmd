@@ -1,0 +1,442 @@
+---
+title: "cartographie"
+format: html
+editor: visual
+---
+# 1- banyuls 
+
+```{r}
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(viridis)   # palette de couleurs pour la pression de pêche
+
+data_poids_corrige<- read.csv("data/pro/data_poids_corrige.csv")
+
+banyuls_shp <- st_read("data/carto/banyuls/delimitation.shp")
+
+# Vérifie la structure et le nom de la colonne qui identifie chaque sous-zone
+print(names(banyuls_shp))
+
+# les noms pour banyuls ne sont pas exactement ce qu'on a dans catchmachine : on a par exemple 3EC - Peyrefite dans Banyuls, mais que 3EC dans CM. Donc il faut garder que le début pour faire la correspondance. 
+
+banyuls_shp <- banyuls_shp %>%
+  mutate(Nom_SousZoneDePeche = trimws(sub(" -.*", "", Id_Zone_su)))
+
+
+
+```
+
+
+```{r}
+# 2. par espece
+
+#dorade royale : Sparus aurata
+#Serran-chèvre : Serranus cabrilla
+# Sar commun : Diplodus sargus
+# pageot commun : Pagellus erythrinus
+# loup : Dicentrarchus labrax
+
+
+
+data_sp_banyuls <- data_poids_corrige %>%
+  filter(NomScientifique == "Pagellus erythrinus")%>%
+  filter(ID_ZoneDePeche==7)
+
+
+
+# 3. AGRÉGATION DES CAPTURES PAR SOUS-ZONE
+
+
+captures_par_zone <- data_sp_banyuls %>%
+  group_by(Nom_SousZoneDePeche) %>%                        
+  summarise(
+    total_nb_captures = sum(Nb_de_prises, na.rm = TRUE),   # ⚠️ ADAPTER : colonne poids
+    nb_sorties        = n()
+  ) %>%
+  ungroup()
+
+# Aperçu
+print(captures_par_zone)
+
+
+# 4. JOINTURE AVEC LE SHAPEFILE
+
+shp_pression <- banyuls_shp %>%
+  left_join(
+    captures_par_zone,
+    by = "Nom_SousZoneDePeche")%>%
+  mutate(
+    total_nb_captures = replace(total_nb_captures, is.na(total_nb_captures), 0)
+  )
+
+
+# Leaflet a besoin du CRS WGS84 (EPSG:4326)
+shp_pression_wgs <- st_transform(shp_pression, crs = 4326)
+
+# Palette de couleurs (équivalent inferno inversé)
+pal <- colorNumeric(
+  palette = "inferno",
+  domain  = shp_pression_wgs$total_nb_captures,
+  reverse = TRUE   # clair = forte pression
+)
+
+# Carte leaflet
+leaflet(shp_pression_wgs) %>%
+  
+  addProviderTiles(providers$OpenStreetMap) %>% 
+  
+  # Polygones des sous-zones
+  addPolygons(
+    fillColor   = ~pal(total_nb_captures),
+    fillOpacity = 0.7,
+    color       = "white",       # bordure
+    weight      = 1.5,
+    smoothFactor = 0.5,
+    
+    # Popup au clic
+    popup = ~paste0(
+      "<b>Zone : </b>", Nom_SousZoneDePeche, "<br>",
+      "<b>Captures : </b>", total_nb_captures, " prises<br>",
+      "<b>Sorties : </b>", nb_sorties
+    ),
+    
+    # Surlignage au survol
+    highlight = highlightOptions(
+      weight      = 3,
+      color       = "#FFFFFF",
+      fillOpacity = 0.9,
+      bringToFront = TRUE
+    ),
+    
+    # Étiquette au survol
+    label = ~paste0(Nom_SousZoneDePeche, " — ", total_nb_captures, " prises"),
+    labelOptions = labelOptions(
+      style     = list("font-weight" = "bold", padding = "4px 8px"),
+      textsize  = "13px",
+      direction = "auto"
+    )
+  ) %>%
+  
+  # Légende
+  addLegend(
+    position = "bottomright",
+    pal      = pal,
+    values   = ~total_nb_captures,
+    title    = "Nombre de prises<br><small>Pageot commun</small>", #!!!!!! CHANGER LE NOM
+    opacity  = 0.8
+  )
+```
+
+```{r}
+# carte de pression toutes sp confondues 
+
+
+data_banyuls <- data_poids_corrige %>%
+  filter(ID_ZoneDePeche==7)
+
+
+
+# 3. AGRÉGATION DES CAPTURES PAR SOUS-ZONE
+
+
+captures_par_zone <- data_banyuls %>%
+  group_by(Nom_SousZoneDePeche) %>%                        
+  summarise(
+    total_nb_captures = sum(Nb_de_prises, na.rm = TRUE),   # ⚠️ ADAPTER : colonne poids
+    nb_sorties        = n()
+  ) %>%
+  ungroup()
+
+# Aperçu
+print(captures_par_zone)
+
+
+# 4. JOINTURE AVEC LE SHAPEFILE
+
+shp_pression <- banyuls_shp %>%
+  left_join(
+    captures_par_zone,
+    by = "Nom_SousZoneDePeche")%>%
+  mutate(
+    total_nb_captures = replace(total_nb_captures, is.na(total_nb_captures), 0)
+  )
+
+# Leaflet a besoin du CRS WGS84 (EPSG:4326)
+shp_pression_wgs <- st_transform(shp_pression, crs = 4326)
+
+# Palette de couleurs (équivalent inferno inversé)
+pal <- colorNumeric(
+  palette = "inferno",
+  domain  = shp_pression_wgs$total_nb_captures,
+  reverse = TRUE   # clair = forte pression
+)
+
+# Carte leaflet
+leaflet(shp_pression_wgs) %>%
+  
+  # Fond de carte
+  addProviderTiles(providers$OpenStreetMap) %>%   # fond marin adapté à la pêche
+  # Autres options sympas :
+  # providers$CartoDB.Positron        → fond clair minimaliste
+  # providers$OpenStreetMap        → OSM classique
+  # providers$Esri.WorldImagery       → satellite
+  
+  # Polygones des sous-zones
+  addPolygons(
+    fillColor   = ~pal(total_nb_captures),
+    fillOpacity = 0.7,
+    color       = "white",       # bordure
+    weight      = 1.5,
+    smoothFactor = 0.5,
+    
+    # Popup au clic
+    popup = ~paste0(
+      "<b>Zone : </b>", Nom_SousZoneDePeche, "<br>",
+      "<b>Captures : </b>", total_nb_captures, " prises<br>",
+      "<b>Sorties : </b>", nb_sorties
+    ),
+    
+    # Surlignage au survol
+    highlight = highlightOptions(
+      weight      = 3,
+      color       = "#FFFFFF",
+      fillOpacity = 0.9,
+      bringToFront = TRUE
+    ),
+    
+    # Étiquette au survol
+    label = ~paste0(Nom_SousZoneDePeche, " — ", total_nb_captures, " prises"),
+    labelOptions = labelOptions(
+      style     = list("font-weight" = "bold", padding = "4px 8px"),
+      textsize  = "13px",
+      direction = "auto"
+    )
+  ) %>%
+  
+  # Légende
+  addLegend(
+    position = "bottomright",
+    pal      = pal,
+    values   = ~total_nb_captures,
+    title    = "Nombre de prises<br><small>total</small>",
+    opacity  = 0.8
+  )
+```
+
+# 2 - Calanques 
+
+```{r}
+
+
+calanque_shp <- st_read("data/carto/PNCal_Zones_Peche_Mer_L93.shp")
+
+# Vérifie la structure et le nom de la colonne qui identifie chaque sous-zone
+print(names(calanque_shp))
+
+# les noms pour banyuls ne sont pas exactement ce qu'on a dans catchmachine : on a par exemple 3EC - Peyrefite dans Banyuls, mais que 3EC dans CM. Donc il faut garder que le début pour faire la correspondance. 
+
+calanque_shp <- calanque_shp %>%
+  mutate(Nom_SousZoneDePeche = zone)
+
+calanque_shp <- st_set_crs(calanque_shp, 2154)
+```
+
+
+```{r}
+# 2. par espece
+
+#dorade royale : Sparus aurata
+#Serran-chèvre : Serranus cabrilla
+# Sar commun : Diplodus sargus
+# pageot commun : Pagellus erythrinus
+# loup : Dicentrarchus labrax
+
+
+
+data_sp_calanque <- data_poids_corrige %>%
+  filter(NomScientifique == "Dicentrarchus labrax")%>%
+  filter(ID_ZoneDePeche==4)
+
+
+
+# 3. AGRÉGATION DES CAPTURES PAR SOUS-ZONE
+
+
+captures_par_zone <- data_sp_calanque %>%
+  group_by(Nom_SousZoneDePeche) %>%                        
+  summarise(
+    total_nb_captures = sum(Nb_de_prises, na.rm = TRUE),
+    nb_sorties        = n()
+  ) %>%
+  ungroup()
+
+# Aperçu
+print(captures_par_zone)
+
+
+# 4. JOINTURE AVEC LE SHAPEFILE
+
+shp_pression <- calanque_shp %>%
+  left_join(
+    captures_par_zone,
+    by = "Nom_SousZoneDePeche")%>%
+  mutate(
+    total_nb_captures = replace(total_nb_captures, is.na(total_nb_captures), 0)
+  )
+
+
+# Leaflet a besoin du CRS WGS84 (EPSG:4326)
+shp_pression_wgs <- st_transform(shp_pression, crs = 4326)
+
+# Palette de couleurs (équivalent inferno inversé)
+pal <- colorNumeric(
+  palette = "inferno",
+  domain  = shp_pression_wgs$total_nb_captures,
+  reverse = TRUE   # clair = forte pression
+)
+
+# Carte leaflet
+leaflet(shp_pression_wgs) %>%
+  
+  addProviderTiles(providers$OpenStreetMap) %>% 
+  
+  # Polygones des sous-zones
+  addPolygons(
+    fillColor   = ~pal(total_nb_captures),
+    fillOpacity = 0.7,
+    color       = "white",       # bordure
+    weight      = 1.5,
+    smoothFactor = 0.5,
+    
+    # Popup au clic
+    popup = ~paste0(
+      "<b>Zone : </b>", Nom_SousZoneDePeche, "<br>",
+      "<b>Captures : </b>", total_nb_captures, " prises<br>",
+      "<b>Sorties : </b>", nb_sorties
+    ),
+    
+    # Surlignage au survol
+    highlight = highlightOptions(
+      weight      = 3,
+      color       = "#FFFFFF",
+      fillOpacity = 0.9,
+      bringToFront = TRUE
+    ),
+    
+    # Étiquette au survol
+    label = ~paste0(Nom_SousZoneDePeche, " — ", total_nb_captures, " prises"),
+    labelOptions = labelOptions(
+      style     = list("font-weight" = "bold", padding = "4px 8px"),
+      textsize  = "13px",
+      direction = "auto"
+    )
+  ) %>%
+  
+  # Légende
+  addLegend(
+    position = "bottomright",
+    pal      = pal,
+    values   = ~total_nb_captures,
+    title    = "Nombre de prises<br><small>Loup</small>", #!!!!!! CHANGER LE NOM
+    opacity  = 0.8
+  )
+
+
+```
+
+```{r}
+
+
+data_calanque <- data_poids_corrige %>%
+  filter(ID_ZoneDePeche==4)
+
+
+
+# 3. AGRÉGATION DES CAPTURES PAR SOUS-ZONE
+
+
+captures_par_zone <- data_calanque %>%
+  group_by(Nom_SousZoneDePeche) %>%                        
+  summarise(
+    total_nb_captures = sum(Nb_de_prises, na.rm = TRUE),
+    nb_sorties        = n()
+  ) %>%
+  ungroup()
+
+# Aperçu
+print(captures_par_zone)
+
+
+# 4. JOINTURE AVEC LE SHAPEFILE
+
+shp_pression <- calanque_shp %>%
+  left_join(
+    captures_par_zone,
+    by = "Nom_SousZoneDePeche")%>%
+  mutate(
+    total_nb_captures = replace(total_nb_captures, is.na(total_nb_captures), 0)
+  )
+
+
+# Leaflet a besoin du CRS WGS84 (EPSG:4326)
+shp_pression_wgs <- st_transform(shp_pression, crs = 4326)
+
+# Palette de couleurs (équivalent inferno inversé)
+pal <- colorNumeric(
+  palette = "inferno",
+  domain  = shp_pression_wgs$total_nb_captures,
+  reverse = TRUE   # clair = forte pression
+)
+
+# Carte leaflet
+leaflet(shp_pression_wgs) %>%
+  
+  addProviderTiles(providers$OpenStreetMap) %>% 
+  
+  # Polygones des sous-zones
+  addPolygons(
+    fillColor   = ~pal(total_nb_captures),
+    fillOpacity = 0.7,
+    color       = "white",       # bordure
+    weight      = 1.5,
+    smoothFactor = 0.5,
+    
+    # Popup au clic
+    popup = ~paste0(
+      "<b>Zone : </b>", Nom_SousZoneDePeche, "<br>",
+      "<b>Captures : </b>", total_nb_captures, " prises<br>",
+      "<b>Sorties : </b>", nb_sorties
+    ),
+    
+    # Surlignage au survol
+    highlight = highlightOptions(
+      weight      = 3,
+      color       = "#FFFFFF",
+      fillOpacity = 0.9,
+      bringToFront = TRUE
+    ),
+    
+    # Étiquette au survol
+    label = ~paste0(Nom_SousZoneDePeche, " — ", total_nb_captures, " prises"),
+    labelOptions = labelOptions(
+      style     = list("font-weight" = "bold", padding = "4px 8px"),
+      textsize  = "13px",
+      direction = "auto"
+    )
+  ) %>%
+  
+  # Légende
+  addLegend(
+    position = "bottomright",
+    pal      = pal,
+    values   = ~total_nb_captures,
+    title    = "Nombre de prises<br><small>total</small>", #!!!!!! CHANGER LE NOM
+    opacity  = 0.8
+  )
+```
+
+```{r}
+sort(unique(data_poids_corrige$Nom_SousZoneDePeche))
+```
+
