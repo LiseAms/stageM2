@@ -33,7 +33,7 @@ RTP_SIH <- read_delim(file="data/raw/ISIH-501892-taille_poids-20220131174507/ISI
 
 #données fishbase 
 RTP_fishbase<- length_weight(
-  species_list =espece_peche$NomScientifique
+  species_list =pro_data$NomScientifique
 )
 
 # données ObsBio
@@ -97,7 +97,7 @@ RTP_SIH <- bind_rows(RTP_Med, RTP_autres)
 RTP_SIH <- RTP_SIH %>% 
   distinct(NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B, .keep_all = T)
 
-# 2eme tri : quand lignes différentes, gqrder le ratio le plus récent : 
+# 2eme tri : quand lignes différentes, garder le ratio le plus récent : 
 RTP_SIH <- RTP_SIH %>%
   group_by(NOM_VALIDE) %>%
   slice_max( ANNEE, n=1) %>%
@@ -244,22 +244,7 @@ espece_top10_RTP <- espece_top10 %>%
 # tri tailles aberrantes
 
 ```{r}
-# importation de l'excel avec les tailles max des espèces : fait à la main, donc à remettre à jour si de nouvelles espèces sont pêchées. si les noms scientifiques sont genre spp, la taille max de la plus grande sp du même genre du tableau est donnée
 
-sp_taille_poids <- read_excel("data/raw/sp_taille_poids.xlsx")
-
-
-#ajouter les tailles et poids max à pro_data 
-pro_data <- pro_data %>%
-  left_join(sp_taille_poids %>%
-              select(NomScientifique, Taille_max_mm, Poids_max_g) %>%
-              distinct(),
-            by="NomScientifique")
-
-# mettre en numeric les valeurs 
-pro_data <- pro_data %>%
-  mutate(Taille_max_mm= as.numeric(Taille_max_mm), 
-         Poids_max_g= as.numeric(Poids_max_g))
   
   
 #il faut d'abord enlever les lignes ou les prises sont multiples: on ne sait pas si la taille est moyenne ou max ou min, pareil pour le poids
@@ -336,7 +321,7 @@ nrow(data_prise_unique) == nrow(erreur_supp) + nrow(erreur_inf) + nrow(data_cohe
 data_coherente_SIH <- data_coherente %>%
   mutate(outlier_valeur= Taille_MM==0 | Poids_g==0) %>%
   
-  left_join(RTP_SIH %>% select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B, origine)) %>% # ajouter les coeff  dans le tableau 
+  left_join(RTP_SIH %>% dplyr::select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B, origine)) %>% # ajouter les coeff  dans le tableau 
   
   mutate(Poids_RTP=RTP_COEF_A_CM*Taille_MM^RTP_COEF_B) %>% # calculer le poids théorique grâce aux données de taille et aux coeff 
   
@@ -347,6 +332,7 @@ data_coherente_SIH <- data_coherente %>%
 	mutate(outlier=outlier_valeur | outlier_RTP) %>% # rassemble les outlier de zéro et les outlier de poids 
 
   mutate(diag=ifelse(outlier_valeur, "Val. manquante", "val. ok")) %>%
+  
 	mutate(diag=ifelse(! outlier_valeur, paste0(diag, " / ", 
 																							ifelse(is.na(outlier_RTP), "RTP inconnue", 
 																										 ifelse(outlier_RTP, "RTP aberrante", 'RTP ok'))), diag))  
@@ -359,9 +345,13 @@ data_coherente_SIH_clean <- data_coherente_SIH %>%
     Taille_max_obs = max(Taille_MM)) %>%
   reframe(Taille=seq(from=Taille_min_obs, to=Taille_max_obs, by=10)) %>% 
   ungroup() %>%
-	inner_join(RTP_SIH %>% select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B, origine)) %>%
+	inner_join(RTP_SIH %>% dplyr::select(NomScientifique=NOM_VALIDE, RTP_COEF_A_CM, RTP_COEF_B, origine)) %>%
 	mutate(Poids=RTP_COEF_A_CM*Taille^RTP_COEF_B)
 
+
+data_dorade<-data_coherente_SIH%>%
+  filter(NomVernaculaire=="Dorade royale")%>%
+  filter(diag=="val. ok / RTP aberrante")
 
 
 data_coherente_SIH %>%
@@ -421,7 +411,7 @@ data_coherente_FB<- data_coherente%>%
 data_coherente_FB <- data_coherente_FB %>%
   mutate(outlier_valeur= Taille_CM==0 | Poids_g==0) %>%
   
-  left_join(RTP_fishbase %>% select(NomScientifique=Species, a, b, origine)) %>% # ajouter les coeff  dans le tableau 
+  left_join(RTP_fishbase %>% dplyr::select(NomScientifique=Species, a, b, origine)) %>% # ajouter les coeff  dans le tableau 
   
   mutate(Poids_RTP=a*Taille_CM^b) %>% # calculer le poids théorique grâce aux données de taille et aux coeff 
   
@@ -445,7 +435,7 @@ data_coherente_FB_clean <- data_coherente_FB %>%
     Taille_max_obs = max(Taille_CM)) %>%
   reframe(Taille=seq(from=Taille_min_obs, to=Taille_max_obs, by=10)) %>% 
   ungroup() %>%
-	inner_join(RTP_fishbase %>% select(NomScientifique=Species, a, b, origine)) %>%
+	inner_join(RTP_fishbase %>% dplyr::select(NomScientifique=Species, a, b, origine)) %>%
 	mutate(Poids=a*Taille^b)
 
 
@@ -498,11 +488,11 @@ data_coherente_FB %>%
 # calcul RTP obsbio
 
 
-# attention il faut passer en cm car la bse de donnée est en cm. 
+# attention il faut passer en cm car la base de donnée est en cm. 
 
 data_coherente_obsbio <- data_coherente%>%
   filter(NomScientifique %in% RTP_obsbio$NomScientifique)%>%
-  left_join(RTP_obsbio %>% select(NomScientifique, a, b, origine))
+  left_join(RTP_obsbio %>% dplyr::select(NomScientifique, a, b, origine))
 
 data_coherente_obsbio<- data_coherente_obsbio%>%
   mutate(Taille_MM = Taille_MM/10, 
@@ -538,7 +528,7 @@ data_coherente_obsbio_clean <- data_coherente_obsbio %>%
     Taille_max_obs = max(Taille_CM)) %>%
   reframe(Taille=seq(from=Taille_min_obs, to=Taille_max_obs, by=10)) %>% 
   ungroup() %>%
-  inner_join(RTP_obsbio %>% select(NomScientifique, a, b)) %>%
+  inner_join(RTP_obsbio %>% dplyr::select(NomScientifique, a, b)) %>%
 	mutate(Poids=a*Taille^b)
 
 
@@ -606,8 +596,8 @@ select_obsbio <- RTP_obsbio%>%
 
 
 combinaison <- select_FB %>%
-  inner_join(select_sih)%>%
-  inner_join(select_obsbio)
+  full_join(select_sih)%>%
+  full_join(select_obsbio)
 
 
 
@@ -692,6 +682,47 @@ combinaison_hors_med %>%
       ggtitle(nom)
   })
 
+```
+
+```{r}
+#df des valeurs RTP aberrantes 
+
+RTP_aberrante_SIH<-data_coherente_SIH%>%
+  filter(diag== "val. ok / RTP aberrante")%>%
+  mutate(extrait_de = "SIH")
+
+RTP_aberrante_FB<-data_coherente_FB%>%
+  filter(diag== "val. ok / RTP aberrante")%>%
+  mutate(extrait_de = "FB")
+
+
+RTP_aberrante_obsbio<-data_coherente_obsbio%>%
+  filter(diag== "val. ok / RTP aberrante")%>%
+  mutate(extrait_de = "obsbio")
+
+
+RTP_outlier <- bind_rows(RTP_aberrante_SIH, RTP_aberrante_FB, RTP_aberrante_obsbio)
+
+
+```
+
+
+# erreur sup et erreur in : le tri 
+```{r}
+erreur_inf<- erreur_inf%>%
+  mutate(diagnostic_erreur=NA)
+
+erreur_supp<- erreur_supp%>%
+  mutate(diagnostic_erreur=NA)
+
+
+write_csv2(erreur_inf, "data/pro/erreur_inf.csv" )
+
+write_csv2()write_excel_csv(erreur_inf, "data/pro/erreur_inf.csv")
+
+
+write.csv2(erreur_inf, "data/pro/erreur_inf.csv",row.names = FALSE,fileEncoding = "UTF8" )
+write.csv2(erreur_inf, "data/pro/erreur_inf.csv", fileEncoding = "Latin1")
 ```
 
 

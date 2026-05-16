@@ -40,30 +40,38 @@ Info_pecheur <- Info_pecheur %>%
 
 Info_pecheur<- Info_pecheur%>%
   mutate(Id_Pêcheur= as.numeric(Id_Pêcheur))
+
+Info_pecheur<- Info_pecheur%>%
+  filter(annee_MAJ>=2025)
+
 ```
 
-
-
-# join des 2 data 
+# join des 2 data
 
 ```{r}
-info_pech_join_data <- pro_data%>%
+data_poids_corrige <- read_csv("data/pro/data_poids_corrige.csv")
+info_pech_join_data <- data_poids_corrige%>%
+  dplyr::select(-Taille_max_mm, -Poids_max_g, -ISSCAAP, -CodeWorms, -CodeEstamp, -ParentEstamp, -Nourriceries, -CD_REF, - CD_NOM, -ID_enquête)%>%
   left_join(Info_pecheur, by= c("Id_Abonné"="Id_Pêcheur" ))
+
+
 ```
 
-
 # nombre de pêcheurs
+
 ```{r}
 nb_pecheur <- info_pech_join_data%>%
   group_by(Nom_ZoneDePeche)%>%
   summarise(nb_pecheur = n_distinct(Id_Abonné), .groups = "drop")
 
 
+nb_pecheur <- Info_pecheur%>%
+  summarise(nb_pecheur = n_distinct(Id_Pêcheur), .groups = "drop")
+
+
 
 
 ```
-
-
 
 # mode de pêche
 
@@ -78,13 +86,20 @@ effectif_mode <- Info_pecheur%>%
 ```{r}
 
 
-Info_pecheur<- Info_pecheur %>%
+info_pech_join_data<- info_pech_join_data %>%
   mutate(Age = if_else (Age>1930 & Age<annee_MAJ , annee_MAJ - Age, Age))%>%
   mutate(Age = if_else (Age> 100, NA, Age))
 
 ggplot(data=Info_pecheur) +
 	geom_histogram(mapping=aes(x=Age)) +
 	theme_bw()
+
+
+
+#tester la normalité de l'age 
+shapiro.test(Info_pecheur$Age)
+
+qqnorm(Info_pecheur$Age)
 ```
 
 # nb sortie par an
@@ -189,8 +204,8 @@ ggplot(heat_map_region) +
 
 # données de ref pour filtrer les codes postaux du tableau 
 donnee_poste <- read_csv("data/raw/base-officielle-codes-postaux.csv")
-
-clean_cp <- Info_pecheur %>%
+# aue si france : != vous ne vivez pas en france
+clean_cp <- info_pech_join_data %>%
   mutate(Code_postal = str_extract(Code_postal, "\\d+")) %>% # les codes sont parfois nimp, on garde que ce qui est chiffre 
   mutate(Code_postal = if_else(str_length(Code_postal) == 4, str_pad(Code_postal, 5, pad = "0"), Code_postal)) # on se dit que toutes les erreurs de 0 manquant au début sont possible, donc pour les chaines de 4, on rajoute un 0. 
 
@@ -203,7 +218,7 @@ clean_cp <- clean_cp %>%
 # on rajoute les latitudes/longitudes
 
 clean_cp <- clean_cp %>%
-  left_join(donnee_poste %>% select(latitude, longitude, Code_postal = code_postal),by = "Code_postal")
+  left_join(donnee_poste %>% dplyr::select(latitude, longitude, Code_postal = code_postal),by = "Code_postal")
 
 # on veut savoir par code postal cb il y a pour ensuite faire la heatmap
 clean_cp_count <- clean_cp %>%
@@ -224,15 +239,216 @@ leaflet(clean_cp_count) %>%
     radius = 15)
 ```
 
+# analyse
 
-
-
-
-
-# analyse 
 ```{r}
 XP_capture<- info_pech_join_data%>%
   group_by(Nombre_sortie_par_an)%>%
   
 ```
 
+# analyse
+
+```{r}
+info_pech_join_data$Mode_peche <- as.factor(info_pech_join_data$Mode_peche)
+
+info_pech_join_data$adhesion_fede <- as.factor(info_pech_join_data$adhesion_fede)
+
+info_pech_join_data$ID_ZoneDePeche_factor <- as.factor(info_pech_join_data$ID_ZoneDePeche_correction)
+
+info_pech_join_data$Nombre_sortie_par_an<-as.factor(info_pech_join_data$Nombre_sortie_par_an)
+```
+
+# exploration
+
+```{r}
+
+summary(info_pech_join_data)
+
+
+hist(info_pech_join_data$Nb_de_prises, breaks = 50)
+
+ggplot(info_pech_join_data, aes(x=Mode_peche, y= Nb_de_prises))+
+  geom_boxplot()+
+  theme_minimal()
+
+
+ggplot(info_pech_join_data, aes(x=Nom_Fédération, y= Nb_de_prises))+
+  geom_boxplot()+
+  theme_minimal()
+
+
+
+```
+
+# univarié Mode de pêche
+
+```{r}
+library(FSA)
+
+kruskal.test(Nb_de_prises ~Mode_peche, data= info_pech_join_data)
+# significatif donc on regarde Post-hoc Dunn 
+
+dunnTest(Nb_de_prises ~Mode_peche, data=info_pech_join_data, method = "bonferroni")
+
+```
+
+# univarié Fédé
+
+```{r}
+# 1. plot 
+ggplot(info_pech_join_data, aes(x = adhesion_fede, y = Nb_de_prises, fill = adhesion_fede)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.3) +
+  scale_y_log10() +
+  theme_bw()
+
+avidite_fede_age<-info_pech_join_data%>%
+  dplyr::select(Id_Abonné,Nb_de_prises,Age,adhesion_fede, Nombre_sortie_par_an)
+
+
+ggplot(avidite_fede_age %>% filter(!is.na(Nombre_sortie_par_an)), 
+       aes(x = Nombre_sortie_par_an, y = Nb_de_prises, fill = adhesion_fede)) +
+  geom_boxplot() +
+  scale_y_log10() +
+  labs(title = "Nombre de prises selon la fréquence de sortie et la fédération",
+       x = "Nombre de sorties par an", 
+       y = "Nb de prises (log)",
+       fill = "Fédération") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+# deux groupes : wilcoxon
+
+wilcox.test(Nb_de_prises~adhesion_fede, data=info_pech_join_data)
+# ── 1. EFFET AVIDITE SEUL ──────────────────────────────────────────────────
+kruskal.test(Nb_de_prises ~ Nombre_sortie_par_an, 
+             data = avidite_fede_age %>% filter(!is.na(Nombre_sortie_par_an)))
+
+
+# post-hoc
+dunn.test(avidite_fede_age$Nb_de_prises, 
+          avidite_fede_age$Nombre_sortie_par_an, 
+          method = "bonferroni")
+
+# ── 2. EFFET FEDERATION SEUL ───────────────────────────────────────────────
+wilcox.test(Nb_de_prises ~ adhesion_fede, 
+            data = avidite_fede_age %>% filter(!is.na(Nombre_sortie_par_an)))
+
+# ── 3. EFFET COMBINE avidite + federation ──────────────────────────────────
+avidite_fede_age <- avidite_fede_age %>%
+  filter(!is.na(Nombre_sortie_par_an)) %>%
+  mutate(groupe = paste(Nombre_sortie_par_an, adhesion_fede, sep = "_"))
+
+kruskal.test(Nb_de_prises ~ groupe, data = avidite_fede_age)
+
+tab<-dunn.test(avidite_fede_age$Nb_de_prises,
+          avidite_fede_age$groupe,
+          method = "bonferroni") %>%
+  data.frame() %>%
+  filter(P.adjusted < 0.05) %>%
+  arrange(P.adjusted)
+
+# ── 4. RÉSUMÉ STATISTIQUE ──────────────────────────────────────────────────
+avidite_fede_age %>%
+  group_by(Nombre_sortie_par_an, adhesion_fede) %>%
+  summarise(
+    n          = n(),
+    mediane    = median(Nb_de_prises, na.rm = TRUE),
+    moyenne    = mean(Nb_de_prises,   na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(Nombre_sortie_par_an, adhesion_fede)
+
+# 
+# # 1. plot 
+# ggplot(info_pech_join_data, aes(x = adhesion_fede, y = poids_final, fill = adhesion_fede)) +
+#   geom_boxplot() +
+#   geom_jitter(width = 0.2, alpha = 0.3) +
+#   scale_y_log10() +
+#   theme_bw()
+# 
+# 
+# 
+# # deux groupes : wilcoxon
+# 
+# wilcox.test(poids_final~adhesion_fede, data=info_pech_join_data)
+
+```
+
+# univarié lieu de peche
+
+```{r}
+
+ggplot(info_pech_join_data,
+       aes(x = ID_ZoneDePeche_factor, y = Nb_de_prises)) +
+  geom_boxplot() +
+  scale_y_log10()
+
+
+library(MASS)
+model_AMP <- glm.nb(Nb_de_prises ~ ID_ZoneDePeche_factor,
+                data = info_pech_join_data)
+summary(model_AMP)
+
+library(emmeans)
+
+emmeans(model_AMP, pairwise ~ ID_ZoneDePeche_factor)
+```
+
+#univarié age
+
+```{r}
+
+ggplot(info_pech_join_data, aes(x = Age, y = Nb_de_prises)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm")+
+  theme_bw()
+
+cor.test(info_pech_join_data$Nb_de_prises, info_pech_join_data$Age, method = "spearman")
+
+
+```
+
+# modele : savoir la variable qui explique les différences de prises : binomial negatif 
+# on prend binomial neg car la variance depasse la moyenne. donc poisson marche pas, var rep = comptage
+```{r}
+
+# verif colinearité 
+model_vif <- lm(Nb_de_prises ~ Age + ID_ZoneDePeche_factor + 
+                Mode_peche + adhesion_fede,
+                data = info_pech_join_data)
+
+vif(model_vif)
+# interactions ou pas 
+
+# anova pour verifier les correlation 
+
+var_explicatives <- glm.nb(Nb_de_prises ~ Age + ID_ZoneDePeche_factor + Mode_peche +adhesion_fede,
+                        data = info_pech_join_data)
+
+summary(var_explicatives)
+
+dispersion_nb <- var_explicatives$deviance / var_explicatives$df.residual
+print(dispersion_nb)
+
+
+# le modele est ok, donc on regarde le poids de chaque variable. 
+# quelle var est la + importante : quelle vzriable a le plus d'effet si on l'enlève du modele
+drop1(var_explicatives, test = "Chisq")
+
+# La variable avec le Chi² le plus élevé explique le plus les captures
+
+# ── 2. R² de McFadden ─────────────────────────────────────────────────────
+R2_mcfadden <- 1 - (model_nb$deviance / model_nb$null.deviance)
+cat("R² McFadden =", round(R2_mcfadden * 100, 1), "%")
+
+# ── 3. VISUALISER LES EFFETS ──────────────────────────────────────────────
+library(ggeffects)
+
+plot(ggpredict(var_explicatives, terms = "Age"))
+plot(ggpredict(var_explicatives, terms = "Mode_peche"))
+plot(ggpredict(var_explicatives, terms = "ID_ZoneDePeche_factor"))
+plot(ggpredict(var_explicatives, terms = "adhesion_fede"))
+
+```

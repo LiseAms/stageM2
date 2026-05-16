@@ -24,7 +24,7 @@ library(rfishbase)
 
 ```{r}
 
-data_raw <- read_delim("data/raw/RapportDesCaptures_08-04-2026_1775654895.csv", 
+data_raw <- read_delim("data/raw/RapportDesCaptures_08-05-2026_1778230884.csv", 
                        delim = ";", escape_double = FALSE, trim_ws = TRUE, 
                        skip = 2)
 
@@ -160,13 +160,12 @@ pro_data<- data_raw %>%
   filter( `Heure debut session`>= as.POSIXct("2025-01-01 00:00:00") )
 
 
-
 ```
 
 ### ajout de colonnes dates et formatage colonnes
 
 ```{r}
-
+#on remet des  _  dans les noms des colonnes 
 colnames(pro_data) <- gsub(" ","_", colnames(pro_data))
 
 #rajouter colonnes année; mois et jour pour plus de simplicité par la suite
@@ -178,13 +177,38 @@ pro_data <- pro_data %>%
     annee = year(Heure_debut_session)
   )
 
+# transformer les Na en 0 pour le nokill et les 0 en Na pour session de pêche
 pro_data <- pro_data %>%
   mutate(Durée_de_la_session= replace(Durée_de_la_session, Durée_de_la_session==0, NA))%>%
   mutate(Nokill= ifelse(is.na(Nokill), 0, Nokill))
 
+# pour enlever les . invisible avant les numéros de Id_prise
+pro_data <- pro_data %>%
+  mutate(Id_Prise = as.numeric(str_remove_all(Id_Prise, "[^0-9]")))
+
+# si des valeurs de poids sont en negatif on les mets en positif
+
+pro_data <- pro_data %>%
+  mutate(
+    Poids_g = abs(Poids_g)
+  )
+
 ```
 
 # Tri des données
+
+# les doublons
+
+```{r}
+doublons <- pro_data %>%
+  group_by(across(-c(Id_Prise, Horodate, Latitude, Longitude, Lien_photo))) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+
+pro_data <- pro_data %>%
+  distinct(across(-c(Id_Prise, Horodate, Latitude, Longitude, Lien_photo)), .keep_all = TRUE)
+```
 
 ### Lieu de pêche = -1
 
@@ -211,6 +235,64 @@ pro_data <- pro_data %>%
 
 ```
 
+# ajout manuel des noms d'espèces quand espèce inconnu dans deux nouvelle colonne : NomVernaculaire_ajoute et NomScientifique_ajoute
+
+```{r}
+pro_data<-pro_data%>%
+  mutate(NomVernaculaire_ajoute = NA, NomScientifique_ajoute = NA)
+
+# ajout manuel des noms quand espece inconnue et photo identifiable 
+
+pro_data<- pro_data%>%
+  mutate(NomVernaculaire_ajoute = case_match(Id_Prise,
+                                      51455 ~"Pageots",
+                                      51552 ~"Maigre commun", # a verifier
+                                      51309 ~"Tassergal",
+                                      44299 ~"Encornet", # a verifier
+                                      51216 ~"Dorade royale", # a verifier
+                                      50808 ~"Oursin violet",
+                                      ), 
+         NomScientifique_ajoute = case_match(Id_Prise,
+                                      51455 ~ "Pagellus spp",
+                                      51552 ~ "Argyrosomus regius",
+                                      51309 ~"Pomatomus saltatrix",
+                                      44299 ~"Loligo vulgaris",
+                                      51216 ~"Sparus aurata",
+                                      50808 ~"Paracentrotus lividus"
+                                      ))
+
+esp_inconnu<-pro_data%>%
+  filter(NomVernaculaire== "Espèce inconnue" & is.na(NomVernaculaire_ajoute)& !is.na(Lien_photo))
+
+
+51331 # rien
+51216 # oblade et sar ? https://catchmachine.fr/images/photo_publication/originale_20260416224447_6F.jpeg
+
+50808 # oursin violet 
+
+50772 #labre merle? https://catchmachine.fr/images/photo_publication/originale_20260405182627_Z3.jpeg 
+50771 # vieille commune ?https://catchmachine.fr/images/photo_publication/originale_20260405182616_CD.jpeg 
+50629 # cenilabre https://catchmachine.fr/images/photo_publication/originale_20260330152924_93.jpeg
+50627 # dorade grise https://catchmachine.fr/images/photo_publication/originale_20260330090934_59.jpeg 
+50463 # turbo https://catchmachine.fr/images/photo_publication/originale_20260322132728_9S.jpeg
+50453 # labre merle ? https://catchmachine.fr/images/photo_publication/originale_20260322080913_AM.jpeg 
+50379 # bogue boops boops https://catchmachine.fr/images/photo_publication/originale_20260320224927_BP.jpeg 
+49790 #labre merle https://catchmachine.fr/images/photo_publication/originale_20260228115116_F5.jpeg
+49479 # impossible 
+49458 # diplodus https://catchmachine.fr/images/photo_publication/originale_20260222161639_B7.jpeg
+ 
+48922 # boops boops  https://catchmachine.fr/images/photo_publication/originale_20260116143309_Z3.jpeg
+48650 # maigre ? https://catchmachine.fr/images/photo_publication/originale_20260111103439_NA.jpeg 
+47266 # cabillaud ? 
+46700 # vieille commune https://catchmachine.fr/images/photo_publication/originale_20251208104015_GZ.jpeg 
+46309 # cabillaud https://catchmachine.fr/images/photo_publication/originale_20251201154258_UY.jpeg
+46215 # impossible https://catchmachine.fr/images/photo_publication/originale_20251129214830_93.jpeg
+44600 # seiche commune https://catchmachine.fr/images/photo_publication/originale_20251101165134_6V.jpeg
+44599 # doublon de celle du dessus 
+44301 # encornet https://catchmachine.fr/images/photo_publication/originale_20251023154747_AQ.jpeg : doublon de 44299 
+ 
+```
+
 ```{r}
 
 # ajout des tailles max dans les data 
@@ -222,7 +304,7 @@ pro_data <- pro_data %>%
   left_join(sp_taille_poids %>%
               select(NomScientifique, Taille_max_mm, Poids_max_g) %>%
               distinct(),
-            by="NomScientifique")
+            by="NomScientifique"  ) #or "NomScientifique_ajoute" 
 
 # mettre en numeric les valeurs 
 pro_data <- pro_data %>%
@@ -234,12 +316,125 @@ pro_data <- pro_data %>%
 ```{r}
 # ajout des modes de pêche : bateau, bord ou mixte
 
-technique_mode <- read_delim("data/pro/technique_mode.csv", 
-                                     delim = ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1"))
+
+#pro_data <- pro_data%>%
+  #left_join(technique_mode%>%select(Technique, Type), by= "Technique")
+pro_data<- pro_data%>%
+  mutate(Mode_peche= NA)
+
+pro_data <- pro_data %>%
+  # cas 1 : on met le sous marin d'abord (des fois c'est écrit indienne, agachon, coulée, trou mais pas précisé sous-marin: on assigne sous marin. )
+  mutate(
+    Mode_peche = if_else(
+      str_detect(
+        Technique,
+        regex("sous[- ]?marin|indienne|agachon|coulée|trou", ignore_case = TRUE)
+      ),
+      "Sous-marin",
+      Mode_peche
+    )) %>%
 
 
-pro_data <- pro_data%>%
-  left_join(technique_mode%>%select(Technique, Type), by= "Technique")
+  # cas 2: si on a les zones, on peut directement assigner les modes de pêche (bateau ou bord), on suppose que les utilisateur.ices remplissent correctement les cases.
+  mutate(
+    Mode_peche = if_else(
+      is.na(Mode_peche),
+      case_when(
+        ID_ZoneDePeche_correction == 7 & ID_SousZoneDePeche %in% c(13, 14, 15) ~ "Bord",
+        ID_ZoneDePeche_correction == 7 & ID_SousZoneDePeche %in% c(16:21) ~ "Bateau",
+        ID_ZoneDePeche_correction == 4 & ID_SousZoneDePeche %in% c(35, 51, 54, 28, 31, 30, 27, 47, 46, 32, 29, 48, 7, 12, 23, 34, 58, 2, 33, 36, 20, 50, 15, 26, 42, 41, 53, 16, 37, 3, 4, 49, 38, 18, 24) ~ "Bateau",
+        TRUE ~ NA_character_
+      ),
+      Mode_peche
+    )) %>%
+  
+  # cas 3 : ce n'est pas une technique sous-marin, on a pas les zones, donc on assigne le mode de pêche via la technique utilisée. 
+  mutate(
+    Mode_peche = if_else(
+      is.na(Mode_peche),
+      case_when(
+        Technique == "Dérive" ~ "Bateau",
+        Technique == "Broumé" ~ "Indeterminable",
+        Technique == "Calée verticale (à l'ancre)" ~ "Bateau",
+        Technique == "Lancer" ~ "Indeterminable",
+        Technique == "Pêche du bord (rockfishing)" ~ "Bord",
+        Technique == "Surfcasting" ~ "Bord",
+        Technique == "Traine" ~ "Bateau",
+        Technique == "À la palangrotte" ~ "Indeterminable",
+        TRUE ~ NA_character_
+      ),
+      Mode_peche
+    ))
+  
+
+
+
+
+#technique_mode <- read_delim("data/pro/technique_mode.csv", 
+#                                     delim = ";", escape_double = FALSE, trim_ws = TRUE, locale = locale(encoding = "latin1"))
+
+
+
+```
+
+#appartenance féderation
+
+```{r}
+
+pro_data<-pro_data%>%
+  mutate(adhesion_fede = if_else(is.na(Nom_Fédération), "non", "oui"))
+```
+
+# tri prise/pêcheur
+
+# tri dans le pro_data
+
+```{r}
+# changer nb capture les 30 en 100, 150 pour maquereau  . 
+# mettre 12 bateau pour PNMGL, calanques; 8 pour banyuls ( et faire les bateau en fct de la sous zone de peche )
+
+
+pro_data<- pro_data%>%
+  # PNMGL
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >100 , 1, Nb_de_prises))%>%
+  filter(Id_Prise != "﻿34191") %>% # 12 barracuda : a verifier ou a remettrea 1 ?
+  
+  # banyuls
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >100 , 1, Nb_de_prises)) %>%
+  
+  #calanques
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >100 , 1, Nb_de_prises)) %>%
+  
+  #capcorse
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==6 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >100 , 1, Nb_de_prises)) %>%
+
+  
+  #bonifacio 
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==5 & Nb_de_prises>150 , 1, Nb_de_prises)) %>%
+  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >100 , 1, Nb_de_prises)) %>%
+  
+  
+  mutate(Nb_de_pêcheurs = if_else(ID_ZoneDePeche==4 & (Mode_peche== "Bateau")& Nb_de_pêcheurs> 12, 1, Nb_de_pêcheurs)) %>%
+  mutate(Nb_de_pêcheurs = if_else(ID_ZoneDePeche==7 & (Mode_peche== "Bateau" )& Nb_de_pêcheurs> 8, 1, Nb_de_pêcheurs)) %>%
+  mutate(Nb_de_pêcheurs = if_else(ID_ZoneDePeche==1 & (Mode_peche== "Bateau" )& Nb_de_pêcheurs> 12, 1, Nb_de_pêcheurs)) %>%
+  mutate(Nb_de_pêcheurs = if_else (Nb_de_pêcheurs >30 | Nb_de_pêcheurs <= 0, 1, Nb_de_pêcheurs)) # premier gros tri pour enlever les nb aberrants, mais des fois concours de pêche donc garder un certain nombre
+
+
+
+  
+  
+  
+
+```
+
+# Création du csv pro_data
+
+```{r}
+write_csv(pro_data,"data/pro/pro_data.csv")
 
 ```
 
@@ -283,139 +478,7 @@ write.csv(hors_amp,"data/pro/hors_amp.csv" ,  row.names = F)
 
 ```
 
-# tri prise/pêcheur
-
-#### tri PNMGL
-
 ```{r}
-
-# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
-# si pas sardine ou maquereau, toute prise > 30 est transformée en =1. ceci car dans le PNMGL le quotas max par jour est 30, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
-
-
-PNMGL<- PNMGL%>%
-  mutate(Nb_de_prises = if_else (Nb_de_prises>150 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises))
-
-
-
-# pour les pêcheurs : tout ce qui est > 50 on met = 1. 
-PNMGL_chelou <- PNMGL%>%
-  filter(Nb_de_pêcheurs>30)
-
-# il y a une seule ligne : 12 barracuda -> est ce qu'on la supprime ? 
-
-PNMGL<- PNMGL%>%
-  filter(Id_Prise != "﻿34191")
-
-
-  
-```
-
-#### tri Banyuls
-
-```{r}
-
-# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
-# si pas sardine ou maquereau, toute prise > 10 est transformée en =1. ceci car à banyulsL le quotas max par jour est 10, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
-
-
-Banyuls<- Banyuls %>%
-  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >10 , 1, Nb_de_prises))
-
-```
-
-#### tri Calanques
-
-```{r}
-
-# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
-# si pas sardine ou maquereau, toute prise > 30 est transformée en =1. dans les calanques le quotas max par jour est en poids, mais on peut se dire que 30 indiv ne sera pas inferieur à 7kg + les 15 indiv possibles variable, on peut se d, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
-
-
-Calanque<- Calanque %>%
-  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises))
-
-
-
-```
-
-#### tri capcorse
-
-```{r}
-
-# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
-# si pas sardine ou maquereau, toute prise > 30 est transformée en =1. dans les calanques le quotas max par jour est en poids, mais on peut se dire que 30 indiv ne sera pas inferieur à 7kg + les 15 indiv possibles variable, on peut se d, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
-
-
-cap_corse<- cap_corse %>%
-  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises))
-
-cap_corse_chelou <- cap_corse%>%
-  filter(Nb_de_prises>50)
-
-```
-
-#### tri bonifacio
-
-```{r}
-
-# pour les tri de nombre de prises : si sp = sardine ou maquereau, prise entre 50 et 100 possible. Toute prise >100 est transforméé en = 1 : on garde le poisson mais pas de sur-interpretation 
-# si pas sardine ou maquereau, toute prise > 30 est transformée en =1. dans les calanques le quotas max par jour est en poids, mais on peut se dire que 30 indiv ne sera pas inferieur à 7kg + les 15 indiv possibles variable, on peut se d, donc on peut se dire que personne ne va déclarer qq chose d'illégal. 
-
-
-bonifacio<- bonifacio %>%
-  mutate(Nb_de_prises = if_else (Nb_de_prises>100 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & Nb_de_prises >30 , 1, Nb_de_prises))
-
-bonifacio_chelou <- bonifacio%>%
-  filter(Nb_de_prises>50)
-
-```
-
-# tri dans le pro_data
-
-```{r}
-
-pro_data<- pro_data%>%
-  # PNMGL
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==1 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >30 , 1, Nb_de_prises))%>%
-  filter(Id_Prise != "﻿34191") %>%
-  
-  # banyuls
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >10 , 1, Nb_de_prises)) %>%
-  
-  #calanques
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==4 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol"  & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >30 , 1, Nb_de_prises)) %>%
-  
-  #capcorse
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==6 & Nb_de_prises>150 , 1, Nb_de_prises))%>%
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >10 , 1, Nb_de_prises)) %>%
-
-  
-  #bonifacio 
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==5 & Nb_de_prises>150 , 1, Nb_de_prises)) %>%
-  mutate(Nb_de_prises = if_else (ID_ZoneDePeche ==7 & NomVernaculaire != "Maquereau commun" & NomVernaculaire != "Sardine commune" & NomVernaculaire != "Maquereau espagnol" & NomVernaculaire != "Maquereaux" & NomVernaculaire!="Girelle" & NomVernaculaire !="Girelle paon" & Nb_de_prises >10 , 1, Nb_de_prises)) %>%
-  
-  
-  mutate(Nb_de_pêcheurs = if_else(ID_ZoneDePeche==4 & (Type== "Bateau" | Type=="Mixte" )& Nb_de_pêcheurs> 5, 1, Nb_de_pêcheurs)) %>%
-  mutate(Nb_de_pêcheurs = if_else (Nb_de_pêcheurs >30 | Nb_de_pêcheurs <= 0, 1, Nb_de_pêcheurs)) # premier gros tri pour enlever les nb aberrants, mais des fois concours de pêche donc garder un certain nombre
-
-  
-  
-  
-
-
-```
-
-# Création du csv pro_data
-
-```{r}
-write.csv(pro_data,"data/pro/pro_data.csv" )
+data_dorade <- pro_data%>%
+  filter(NomVernaculaire== "Dorade royale")
 ```

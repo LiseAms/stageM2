@@ -1,0 +1,269 @@
+---
+title: "correction_poids"
+format: html
+editor: visual
+---
+
+```{r}
+pro_data <- read_csv("data/pro/pro_data.csv")
+
+
+SIH_poids_theo <- data_coherente_SIH_clean%>%
+  dplyr::select(NomVernaculaire, NomScientifique, RTP_COEF_A_CM, RTP_COEF_B, origine)%>%
+  distinct(NomVernaculaire, .keep_all = T)%>%
+  rename(a_SIH=RTP_COEF_A_CM)%>%
+  rename(b_SIH =RTP_COEF_B)%>%
+  rename(origine_SIH = origine)
+
+
+FB_poids_theo <- data_coherente_FB_clean%>%
+  dplyr::select(NomVernaculaire, NomScientifique, a, b, origine)%>%
+  distinct(NomVernaculaire, .keep_all = T)%>%
+  rename(a_FB=a)%>%
+  rename(b_FB = b)%>%
+  rename(origine_FB = origine)
+
+
+Obsbio_poids_theo <- data_coherente_obsbio_clean%>%
+  mutate(origine = "med")%>%
+  dplyr::select(NomVernaculaire, NomScientifique, a, b, origine)%>%
+  distinct(NomVernaculaire, .keep_all = T)%>%
+  rename(a_obs = a) %>%
+  rename(b_obs = b)%>%
+  rename(origine_obs = origine)
+
+
+correction_poids<- pro_data%>%
+  left_join(Obsbio_poids_theo)%>%
+  left_join(SIH_poids_theo)%>%
+  left_join(FB_poids_theo)
+
+
+correction_poids<- correction_poids%>%
+  mutate(Poids_theorique_SIH = a_SIH*Taille_MM ^b_SIH)%>%
+  mutate(Poids_theorique_FB= a_FB * (Taille_MM/10)^b_FB)%>%
+  mutate(Poids_theorique_ObsBio = a_obs* (Taille_MM/10)^b_obs)
+
+correction_poids<- correction_poids%>%
+  dplyr::select(Id_Prise ,Nb_de_prises, NomScientifique, Taille_MM, Taille_max_mm , Poids_g, a_obs, b_obs, origine_obs, a_SIH, b_SIH, origine_SIH, a_FB, b_FB, origine_FB, Poids_theorique_SIH, Poids_theorique_FB, Poids_theorique_ObsBio)
+
+```
+
+# 1 : regarder si obsbio est une ref pour les ratios
+
+```{r}
+
+obsBio_reference <- RTP_obsbio %>%
+  group_by(NomScientifique) %>%
+  summarise(
+    # on récupere la taille minimale et maximale etudiée pour les ratio
+    Taille_min_ratio = min(LENGTH_TOTAL_VALUE)*10,
+    Taille_max_ratio = max(LENGTH_TOTAL_VALUE)*10, 
+    
+    # quel ecart entre les min et max
+    ecart_taille = Taille_max_ratio - Taille_min_ratio, 
+    # si min = 10 et max = 20, alors 10 classes d'age, et donc il faut MINIMUM 3*10 individus pour que ça soit robuste 
+    
+    n_individus_requis = 3 * round(ecart_taille/10),
+    n_individus_obs = n(), 
+    
+    # est ce que le groupe est suffisamment robuste 
+    ratio_robuste = n_individus_obs >=n_individus_requis
+    
+    
+  )
+
+
+
+correction_poids <- correction_poids %>%
+  left_join(
+    obsBio_reference %>% dplyr::select(NomScientifique, Taille_min_ratio, Taille_max_ratio, ratio_robuste),
+    by = "NomScientifique"
+  )
+```
+
+# 2 : faire les corrections de poids si necessaire
+
+```{r}
+options(scipen = 999)
+
+correction_poids <- correction_poids%>%
+  
+  mutate(
+    
+    # --- compter les NA dans les poids théoriques, le nb de poids d'origine med
+    
+    # nb de NA dans les poids théoriques : si 2 NA -> alors 1 seul poids théorique, facile on le garde pour les comparaisons 
+    nb_theo_non_na = rowSums(!is.na(across(c(Poids_theorique_SIH, Poids_theorique_FB, Poids_theorique_ObsBio)))),
+    
+    # nb de poids théoriques qui ont comme origine la Med : si 1 seul alors facile on le garde pour les comparaisons 
+    nb_med = rowSums(across(c(origine_SIH, origine_FB, origine_obs)) == "med", na.rm = TRUE),
+    
+    # permet de faciliter quand un seul poids ou >1 mais 1 seul med 
+    cas_equivalent_unique = nb_theo_non_na == 1 | (nb_theo_non_na > 1 & nb_med == 1),
+    
+    # --- Choix du poids théorique ---
+    poids_theo_ref = case_when(
+      
+      # on a 1 ou + poids, mais 1 seul vient de la Med, alors on le garde : 
+      cas_equivalent_unique & origine_SIH == "med" ~ Poids_theorique_SIH,
+      cas_equivalent_unique & origine_FB == "med" ~ Poids_theorique_FB,
+      cas_equivalent_unique & origine_obs == "med" ~ Poids_theorique_ObsBio,
+      
+      # on a 1 seul poids, qu'il vienne de la Med ou pas, on garde 
+      cas_equivalent_unique & !is.na(Poids_theorique_ObsBio) ~ Poids_theorique_ObsBio, 
+      cas_equivalent_unique & !is.na(Poids_theorique_FB) ~ Poids_theorique_FB,
+      cas_equivalent_unique & !is.na(Poids_theorique_SIH) ~ Poids_theorique_SIH,
+      
+      # on a plusieurs poids d'origine Med : priorité ObsBio > FB > SIH
+      
+      ## cas ou la taille observée est dans l'echelle d'etude de obsbio, et il y a assez de données pour que ça soit robuste. 
+      !cas_equivalent_unique & origine_obs== "med" & 
+        Taille_MM >= Taille_min_ratio & Taille_MM <= Taille_max_ratio & ratio_robuste==TRUE ~Poids_theorique_ObsBio, 
+      
+      ## cas ou obsbio pas retenu (hors tailles dispo ou pas robuste) : on prend FB
+      !cas_equivalent_unique & !is.na(Poids_theorique_FB) ~Poids_theorique_FB, 
+      
+      ## si rien de tout ça, on prend SIH
+      !cas_equivalent_unique & !is.na(Poids_theorique_SIH) ~Poids_theorique_SIH
+      
+    ),
+    
+    # --- On écrit la source du poids théorique --- 
+    
+    source_theo = case_when(
+      
+      cas_equivalent_unique==T & origine_SIH == "med" ~ "SIH",
+      cas_equivalent_unique==T & origine_FB == "med" ~ "FB",
+      cas_equivalent_unique==T & origine_obs == "med" ~ "ObsBio",
+      
+      cas_equivalent_unique==T & !is.na(Poids_theorique_ObsBio) ~ "ObsBio",
+      cas_equivalent_unique==T & !is.na(Poids_theorique_FB) ~ "FB",
+      cas_equivalent_unique==T & !is.na(Poids_theorique_SIH) ~ "SIH",
+      
+      
+      cas_equivalent_unique==F & origine_obs== "med" & 
+        Taille_MM >= Taille_min_ratio & Taille_MM <= Taille_max_ratio & ratio_robuste==TRUE ~"ObsBio", 
+  
+      cas_equivalent_unique==F & !is.na(Poids_theorique_FB) ~"FB", 
+      
+      cas_equivalent_unique==F & !is.na(Poids_theorique_SIH) ~ "SIH"
+    ),
+    
+    
+    # --- On corrige ou non les poids : comparaison du poids observé (= renseigné dans l'appli) avec le théorique gardé ---
+    # --- ratio testé dans les deux hypothèses ---
+    ratio_si_total   = (Poids_g / Nb_de_prises) / poids_theo_ref,  # hypothèse : poids_g = total
+    ratio_si_moyenne = Poids_g / poids_theo_ref,                    # hypothèse : poids_g = individu
+    
+    # --- Diagnostic ---
+    diag_poids = case_when(
+      
+      is.na(poids_theo_ref) ~ "aucun poids théorique, poids obs gardé",
+      
+      # Taille aberrante : on ne fait aucun calcul
+      (Taille_MM > Taille_max_mm * 1.1 & !is.na(Taille_max_mm)) ~"taille aberrante, poids obs gardé",
+      
+      # si taille a peut pres ok, alors on regarde en détail
+      Nb_de_prises==0 ~"pas de capture",
+      Taille_MM == 0   ~ "pas de taille, poids obs gardé",
+      Poids_g == 0     ~ "poids absent",
+      Nb_de_prises == 1 & (ratio_si_moyenne >= 0.5 & ratio_si_moyenne <= 1.5) ~ "poids obs ok",
+      #cas ou erreur d'unite : mis en kg au lieu de g
+      Nb_de_prises == 1 & (Poids_g*1000 >= poids_theo_ref*0.5 & Poids_g*1000 >= poids_theo_ref*0.5 ) ~ "poids obs ok, unité fausse",
+      Nb_de_prises == 1 & (ratio_si_moyenne <0.5  | ratio_si_moyenne>1.5) ~ "poids obs aberrant",
+      
+      # Nb_de_prises > 1 : on teste d'abord l'hypothèse "total"
+      ratio_si_total   >= 0.5 & ratio_si_total   <= 1.5 ~ "poids donné total des prises",
+      ratio_si_moyenne >= 0.5 & ratio_si_moyenne <= 1.5 ~ "poids donné moyen d'un individu",
+      #ratiokg a faire 
+      
+      #ratio_si_total_kg = (Poids_g * 1000 / Nb_de_prises) / poids_theo_ref,  # kg saisi, total
+    # ratio_si_moy_kg   = (Poids_g * 1000)          / poids_theo_ref,  # kg saisi, individu
+
+      TRUE ~ "poids aberrant"
+    ),
+    
+    # --- Poids final ---
+    poids_final = case_when(
+      is.na(poids_theo_ref) ~ Poids_g,
+      (Taille_MM > Taille_max_mm * 1.1 & !is.na(Taille_max_mm)) ~Poids_g,
+      
+      Nb_de_prises==0 ~ NA_real_,
+      Taille_MM == 0   ~ Poids_g,
+      Poids_g == 0     ~ poids_theo_ref,
+      Nb_de_prises == 1 & (ratio_si_moyenne >= 0.5 & ratio_si_moyenne <= 1.5) ~ Poids_g,
+      Nb_de_prises == 1                                                       ~ poids_theo_ref,
+      
+      ratio_si_total   >= 0.5 & ratio_si_total   <= 1.5 ~ Poids_g / Nb_de_prises, # on ramène à l'individu
+      ratio_si_moyenne >= 0.5 & ratio_si_moyenne <= 1.5 ~ Poids_g,                # déjà un individu
+      
+      
+      TRUE ~ poids_theo_ref
+      
+      
+    ))
+    
+    
+
+```
+
+# verifier que certains des poids obs gardés soient pas complètement fous
+
+```{r}
+# on filtre une tonne max : comme ça on enlève les qq lignes qui ne font pas sens : on met taille et poids aberrant : poids final = NA
+
+correction_poids<-correction_poids%>%
+  mutate( 
+    diag_poids= case_when(
+      poids_final>1000000 ~"taille et poids aberrant, on met NA", 
+      TRUE~diag_poids
+    ),
+    poids_final = case_when(
+      poids_final>1000000 ~ NA, 
+      TRUE~poids_final
+    ))
+```
+
+# on join et on écrit le csv
+
+```{r}
+
+data_poids_corrige<- pro_data%>%
+  left_join(correction_poids %>% dplyr::select(Id_Prise, poids_final, diag_poids, poids_theo_ref, source_theo), by= "Id_Prise")
+
+write_csv(data_poids_corrige,"data/pro/data_poids_corrige.csv")
+
+
+
+```
+
+#RTP de la dorade royale 
+
+```{r}
+pro_data %>%
+  left_join(
+    correction_poids %>% 
+      dplyr::select(Id_Prise, Poids_theorique_SIH, Poids_theorique_FB, Poids_theorique_ObsBio),
+    by = "Id_Prise"
+  ) %>%
+  filter(NomScientifique=="Sparus aurata") %>%
+    ggplot(aes(x = Taille_MM)) +
+      geom_line(aes(y = Poids_theorique_SIH, color = "SIH"), size = 1) +
+      geom_line(aes(y = Poids_theorique_FB, color = "FB"), size = 1) +
+      geom_line(aes(y = Poids_theorique_ObsBio, color = "ObsBio"), size = 1) +
+      geom_point(aes(y = Poids_g)) +
+      scale_x_continuous(limits= c(0,700))+
+      scale_y_continuous(limits = c(0,5000))+
+  
+    scale_color_manual(
+      name = "Source",
+      values = c("SIH" = "brown", "FB" = "purple", "ObsBio" = "blue") )+
+        
+      xlab("Taille (mm)") +
+      ylab("Poids (g)") +
+      theme_bw() +
+      theme(legend.position = "right")
+  
+
+```

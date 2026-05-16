@@ -198,6 +198,15 @@ erreur_inf_bonifacio<- data.frame()
 erreur_inf_horsAMP <- data.frame() # on peut rien mettre car pas de reglementation 
 
 
+
+# outlier RTP : 
+
+outlier_rtp <- RTP_outlier%>%
+  group_by(Nom_ZoneDePeche)%>%
+  summarise(nb_erreur_RTP=n(), .groups = "drop")
+
+
+
 # erreur d'engin / technique 
 
 
@@ -239,6 +248,8 @@ tableau_erreurs <- data.frame(
     nrow(erreur_inf_calanque), 
     nrow(erreur_inf_capcorse), 
     nrow(erreur_inf_horsAMP)
+  ), 
+  left_join(outlier_rtp)
   )
 ) %>%
   mutate(
@@ -255,7 +266,8 @@ print(tableau_erreurs)
 
 reglementation <- read_excel("data/pro/reglementation.xlsx")
 
-
+mann whitney ?
+  
 
 tableau_erreurs <- tableau_erreurs%>%
   left_join(reglementation)

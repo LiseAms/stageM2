@@ -1,0 +1,68 @@
+---
+title: "biomasse"
+format: html
+editor: visual
+---
+
+```{r}
+data_poids_corrige<- read.csv("data/pro/data_poids_corrige.csv")
+
+```
+
+# biomasse calcul IA 
+```{r}
+# ── 1. BIOMASSE TOTALE ──────────────────────────────────────────────────────
+biomasse_totale <- data_poids_corrige %>%
+  summarise(
+    biomasse_kg = sum(poids_final, na.rm = TRUE) / 1000,
+    nb_individus = sum(Nb_de_prises, na.rm = TRUE)
+  )
+
+# ── 2. BIOMASSE PAR ESPECE ─────────────────────────────────────────────────
+biomasse_espece <- data_poids_corrige %>%
+  group_by(NomScientifique, NomVernaculaire) %>%
+  summarise(
+    biomasse_kg  = sum(poids_final, na.rm = TRUE) / 1000,
+    nb_individus = sum(Nb_de_prises, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(biomasse_kg))
+
+# ── 3. TOP 10 ESPECES LES PLUS PECHEES ────────────────────────────────────
+top10_especes <- biomasse_espece %>%
+  slice_max(nb_individus, n = 10)
+
+# Graphique top 10
+ggplot(top10_especes, aes(x = reorder(NomVernaculaire, biomasse_kg), 
+                           y = biomasse_kg, fill = NomVernaculaire)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top 10 espèces — biomasse capturée",
+       x = "", y = "Biomasse (kg)") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# ── 4. BIOMASSE PAR ZONE DE PECHE ─────────────────────────────────────────
+biomasse_zone <- data_poids_corrige %>%
+  group_by(Nom_ZoneDePeche) %>%
+  summarise(
+    biomasse_kg  = sum(poids_final, na.rm = TRUE) / 1000,
+    nb_individus = sum(Nb_de_prises, na.rm = TRUE),
+    nb_sorties   = n_distinct(ID_sortie_corrige),
+    # biomasse ramenée à l'effort
+    biomasse_par_sortie = biomasse_kg / nb_sorties,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(biomasse_kg))
+
+# Graphique par zone
+ggplot(biomasse_zone, aes(x = reorder(Nom_ZoneDePeche, biomasse_kg), 
+                           y = biomasse_kg)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 25)) +
+  labs(title = "Biomasse capturée par zone de pêche",
+       x = "", y = "Biomasse (kg)") +
+  theme_bw()
+```
+

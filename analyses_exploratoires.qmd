@@ -322,7 +322,7 @@ Déclaration jour de pêche complètement éronné car déclarations en décembr
 ```{r}
 
 captures_autre <- pro_data %>%
-  filter(ID_ZoneDePeche==8)
+  filter(ID_ZoneDePeche_correction==8)
 
 
 capture_totale_autre<- sum(captures_autre$Nb_de_prises, na.rm = T)
@@ -332,27 +332,26 @@ capture_totale_autre<- sum(captures_autre$Nb_de_prises, na.rm = T)
 On comptabilise `{r} capture_totale_autre` captures hors des AMPs.
 
 ```{r}
-#évolution des captures dans le temps 
-autre_tps <- captures_autre %>%
-  count(annee, mois, name = "nb_prises")
+nb_mois <- captures_autre %>%
+  mutate(mois = factor(mois, levels = ordre_mois)) %>%
+  group_by(annee, mois) %>%
+  summarise(nb_prises = sum(Nb_de_prises, na.rm = TRUE), .groups = "drop") %>%
+  arrange(annee, mois)
 
-
-autre_tps <- autre_tps %>%
-  mutate(mois = factor(mois, levels = ordre_mois))
-
-
-ggplot(autre_tps, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
+ggplot(nb_mois, aes(x = mois, y = nb_prises, color = factor(annee), group = annee)) +
   geom_line(linewidth = 1.5, alpha = 0.8) +
   geom_point(size = 3,alpha=0.9)+
   geom_text(aes(label = nb_prises), 
-            vjust= -1,size = 3) +
-  labs(title = "Évolution du nombre de prises de pêche par mois renseignées hors AMP",
+            vjust= -1.5,size = 3) +
+  scale_y_continuous(limits= c(0,1000), breaks = seq(0,1000, by=250))+
+  labs(title = "Nombre de prises de pêche par mois Hors AMP",
        subtitle = paste("Total:", sum(captures_autre$Nb_de_prises), "prises"),
-       x = "Mois", y = "Nombre de prises") +
+       x = "Mois", y = "Nombre de prises", 
+       color= "Année") +
   theme_minimal() +
   theme(plot.title = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text())
-
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "right")
 
 
 
@@ -370,7 +369,7 @@ espece_peche <- pro_data %>%
  
 espece_peche <- espece_peche %>%
   left_join(pro_data %>%
-              select(CodeFAO, NomVernaculaire, NomScientifique)%>%
+              select(CodeFAO, NomVernaculaire, NomScientifique, Taille_max_mm)%>%
               distinct(),
             by= "NomScientifique") %>%
   arrange(desc(total))
@@ -402,7 +401,7 @@ espece_top10
 
 ```
 
-# espèces top 10 par AMP 
+# espèces top 10 par AMP
 
 ```{r}
 
@@ -460,7 +459,6 @@ espece_top10_Calanques
 
 ```
 
-
 # sorties bredouilles
 
 ```{r}
@@ -479,10 +477,12 @@ il y a `{r} nb_bredouilles` sorties bredouilles.
 
 bredouille_AMP <- bredouille %>%
   group_by(Nom_ZoneDePeche)%>%
-  summarise(n= n(), .groups = "drop")
+  summarise(nb_bredouilles= n(), .groups = "drop")
 
 
-ggplot(bredouille_AMP, aes(x = Nom_ZoneDePeche, y = n, fill = n)) +
+nb_prises = sum(Nb_de_prises, na.rm = TRUE)
+
+ggplot(bredouille_AMP, aes(x = Nom_ZoneDePeche, y = n, fill = nb_bredouilles)) +
   geom_col(width = 0.7, alpha = 0.8) +
   geom_text(aes(label = n), vjust = -0.3, fontface = "bold", size = 4) +
   scale_y_continuous(limits = c(0, 1200), breaks = seq(0,1200, by=200))+
@@ -496,5 +496,127 @@ ggplot(bredouille_AMP, aes(x = Nom_ZoneDePeche, y = n, fill = n)) +
         axis.text.x = element_text(angle = 30, hjust = 1))
 
 ```
-# techniques et engin de pêche 
 
+# techniques et engin de pêche
+
+# bredouille vs pas
+
+```{r}
+# 1. Nombre de sorties bredouille
+
+# 2. Nombre total de sorties 
+pro_data <- pro_data %>%
+  mutate(ID_sortie_corrige = ifelse(
+    Id_Sortie == 0,
+    paste0("unique_", row_number()),
+    as.character(Id_Sortie)
+  ))
+
+sorties_count <- pro_data %>%
+  group_by(Nom_ZoneDePeche) %>%
+  summarise(nb_sorties = n_distinct(ID_sortie_corrige), .groups = "drop")
+
+# 3. Fusion
+
+ratio_df <- bredouille_AMP %>%
+  left_join(sorties_count, by = "Nom_ZoneDePeche") %>%
+  mutate(
+    ratio = nb_bredouilles / (nb_bredouilles + nb_sorties)
+  )
+
+ggplot(ratio_df, aes(x = Nom_ZoneDePeche, y = ratio * 100, fill = ratio)) +
+  geom_col(width = 0.7, alpha = 0.8) +
+  geom_text(aes(label = paste0(round(ratio * 100, 1), "%")), 
+            vjust = -0.3, fontface = "bold", size = 4) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0,100, by=20)) +
+  labs(
+    title = "Taux de sorties bredouille par AMP",
+    subtitle = paste("Moyenne:", round(mean(ratio_df$ratio, na.rm = TRUE)*100, 1), "%"),
+    x = "AMP", 
+    y = "Pourcentage (%)"
+  ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 25)) +
+  scale_fill_gradient(low = "green", high = "red") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(size = 14, face = "bold"), 
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  )
+```
+
+```{r}
+
+
+df_long <- ratio_df %>%
+  pivot_longer(cols = c(nb_sorties, nb_bredouilles),
+               names_to = "type",
+               values_to = "valeur")
+
+ggplot(df_long, aes(x = Nom_ZoneDePeche, y = valeur, fill = type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    x = "AMP",
+    y = "Nombre de sorties",
+    fill = "",
+    title = "Sorties et sorties bredouilles par AMP",
+    caption = "Une sortie bredouille = aucune capture lors de la sortie"
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, max(df_long$valeur, na.rm = TRUE), by = 500),  # graduation tous les 500
+    labels = scales::comma                                           # format 1 000 au lieu de 1000
+  ) +
+  scale_fill_manual(
+    values = c("nb_sorties" = "steelblue",
+               "nb_bredouilles" = "tomato"),
+    labels = c("Nb total de sorties", "Nb de sorties bredouilles")
+  ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 25)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# cartographie
+
+```{r}
+point_carte <- pro_data %>%
+  filter(!is.na(Longitude), !is.na(Latitude)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs =4326)
+
+calanque_shp <- st_read("data/carto/PNCal_Zones_Peche_Mer_L93.shp")
+PNMGL_shp <- st_read("data/carto/delimitation_pnmgl.shp")
+banyuls_shp <- st_read("data/carto/banyuls/delimitation.shp")
+
+mapview(banyuls_shp)
+
+#WGS84 (EPSG:4326)
+calanque_shp <- st_transform(calanque_shp, 4326)
+PNMGL_shp   <- st_transform(PNMGL_shp, 4326)
+banyuls_shp <- st_transform(banyuls_shp, 4326)
+
+# representation carte
+leaflet() %>%
+  addTiles() %>%  
+  addPolygons(data = calanque_shp,
+              color = "orange",
+              fillOpacity = 0.4,
+              group = "Calanques") %>%
+  addPolygons(data = PNMGL_shp,
+              color = "red",
+              fillOpacity = 0.4,
+              group = "PNMGL") %>%
+  addPolygons(data = banyuls_shp,
+              color = "green",
+              fillOpacity = 0.4,
+              group = "Banyuls") %>%
+  # Points de capture
+  addCircleMarkers(data = point_carte, 
+                   radius = 2)%>%
+  
+  # Contrôle des couches
+  addLayersControl(
+    overlayGroups = c("Calanques", "PNMGL", "Banyuls", "Captures"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+```
