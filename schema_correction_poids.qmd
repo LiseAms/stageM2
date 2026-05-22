@@ -55,6 +55,14 @@ digraph correction_poids {
   B3 [label="ObsBio : a_obs, b_obs,\norigine des données"]
 
   C  [label="Jointure avec pro_data"]
+  
+  C1 [label = "Taille déclarée < Taille max biblio"]
+  
+  C2 [label = "Taille valide"]
+  
+  C3 [label = "Taille non valide/\npas de taille"]
+  
+  C4 [label = "Poids observé conservé"]
 
   D  [label="Calcul des poids théoriques"]
 
@@ -101,8 +109,6 @@ digraph correction_poids {
   N1 [label="impossible"]
 
   Q1 [label="0 prise"]
-
-  Q2 [label="pas de taille"]
 
   Q3 [label="Poids final = NA"]
 
@@ -156,8 +162,13 @@ digraph correction_poids {
   B2 -> C
   B3 -> C
 
-  C  -> D
-
+  C  -> C1
+  
+  C1 -> C2
+  C2 -> C3 [label= "Non"]
+  C3 -> C4
+  C4 -> V
+  C2 -> D [label= "Oui"]
   D  -> D1
   D  -> D2
   D  -> D3
@@ -198,14 +209,14 @@ digraph correction_poids {
   N  -> N3
 
   N1 -> Q1 [label="pas de captures"]
-  N1-> Q2 [label="Pas de taille"]
+  
   
   Q1 -> Q3
-  Q2 -> Q3
+  Q2 -> O1
   
   N2 -> O
-  O  -> O1 [label="Oui/nPoids obs OK"]
-  O  -> O2 [label="Non/nPoids obs aberrant"]
+  O  -> O1 [label="Oui\nPoids obs OK"]
+  O  -> O2 [label="Non\nPoids obs aberrant"]
   
   N3 -> P
   P  -> P1 [label="Non\nPoids obs aberrant"]
